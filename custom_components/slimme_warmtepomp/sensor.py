@@ -22,8 +22,7 @@ class SlimmeWarmtepompSensor(SensorEntity):
         self._is_running = False
         self._state = 22.0
         
-        # Zelflerende variabelen voor afkoeling
-        self._learned_cooling_coeff = 0.025  # Startwaarde (graden afkoeling per uur per graad Delta-T)
+        self._learned_cooling_coeff = 0.025
         self._last_room_temp = None
         self._last_update_time = None
         
@@ -52,38 +51,47 @@ class SlimmeWarmtepompSensor(SensorEntity):
             return val * 3600.0 * 1000.0
         return val
 
+    def _get_power_in_watts(self, entity_id):
+        if not entity_id:
+            return 0.0
+        state_obj = self.hass.states.get(entity_id)
+        if not state_obj or state_obj.state in ['unknown', 'unavailable']:
+            return 0.0
+        try:
+            val = float(state_obj.state)
+        except ValueError:
+            return 0.0
+        unit = state_obj.attributes.get("unit_of_measurement", "").strip().lower()
+        if unit in ["kw", "kilowatt"]:
+            return val * 1000.0
+        return val  # Standaard in Watts (W)
+
     async def async_update(self):
         now = dt_util.utcnow()
         
-        # 1. Sensoren uitlezen met Fallbacks
         room_state = self.hass.states.get(self._room_sensor_id)
         current_room = float(room_state.state) if room_state and room_state.state not in ['unknown', 'unavailable'] else 20.0
 
         outside_state = self.hass.states.get(self._outside_sensor_id)
         actueel_buiten = float(outside_state.state) if outside_state and outside_state.state not in ['unknown', 'unavailable'] else 5.0
 
-        # 2. ZELFLERENDE AFKOEL-ANALYSE
-        # Als de warmtepomp niet voluit draait, observeren we hoe snel het huis afkoelt
         freq = self._get_float(self._config.get("compressor_freq_sensor"), 0.0)
         is_heating = freq >= 30.0
         
         if self._last_room_temp is not None and self._last_update_time is not None and not is_heating:
             time_diff_hours = (now - self._last_update_time).total_seconds() / 3600.0
-            if 0.1 < time_diff_hours < 2.0:  # Geldige meetperiode
+            if 0.1 < time_diff_hours < 2.0:
                 temp_diff = self._last_room_temp - current_room
-                if temp_diff > 0:  # Huis koelt daadwerkelijk af
+                if temp_diff > 0:
                     delta_t_indoordoor = current_room - actueel_buiten
                     if delta_t_indoordoor > 0:
                         measured_coeff = temp_diff / (time_diff_hours * delta_t_indoordoor)
-                        # Filter uitschieters en update geleidelijk (Exponential Moving Average)
                         if 0.005 < measured_coeff < 0.1:
                             self._learned_cooling_coeff = (0.98 * self._learned_cooling_coeff) + (0.02 * measured_coeff)
-                            _LOGGER.debug(f"Zelflerende coëfficiënt bijgewerkt: {self._learned_cooling_coeff:.4f}")
 
         self._last_room_temp = current_room
         self._last_update_time = now
 
-        # 3. Parameters ophalen
         base_setpoint = self._get_float("number.slimme_wp_basis_temperatuur", 22.0)
         helling = self._get_float("number.slimme_wp_stooklijn", 0.4)
         horizon_uren = int(self._get_float("number.slimme_wp_horizon", 4.0))
@@ -115,7 +123,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
             self._is_running = False
             self._compressor_start_time = None
 
-        # 4. Weersvoorspelling & Voorspellende afkoeling berekenen
         verwacht_buiten = actueel_buiten
         verwacht_bewolking = 100.0
         predicted_future_cooling = 0.0
@@ -139,7 +146,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
             except Exception as e:
                 _LOGGER.warning("Kon weersvoorspelling niet ophalen: %s", e)
 
-        # Voorspellende berekening van de afkoeling over de horizon op basis van geleerde coëfficiënt
         predicted_delta_t = current_room - verwacht_buiten
         if predicted_delta_t > 0:
             predicted_future_cooling = self._learned_cooling_coeff * predicted_delta_t * horizon_uren
@@ -147,9 +153,8 @@ class SlimmeWarmtepompSensor(SensorEntity):
         gecombineerd_buiten = (actueel_buiten * 0.7) + (verwacht_buiten * 0.3)
         weather_part = helling * (20.0 - gecombineerd_buiten)
 
-        # Extra correctie op stooklijn als de voorspelde afkoeling extreem is (bijv. bij -5°C vs 4°C)
         if verwacht_buiten < 0:
-            weather_part += abs(verwacht_buiten) * 0.15  # Extra anticipatie-boost bij strenge vorst
+            weather_part += abs(verwacht_buiten) * 0.15
 
         sun_deduction = 0.0
         sun_state = self.hass.states.get("sun.sun")
@@ -171,7 +176,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
         room_error = actief_ruimte_setpoint - current_room
         compensation_part = room_error * 2.0
 
-        # Als de voorspelling laat zien dat het hard gaat afkoelen (-5°C), tellen we de voorspelde afkoeling direct mee in de compensatie
         if predicted_future_cooling > 0.3:
             compensation_part += predicted_future_cooling * 1.5
 
@@ -195,29 +199,70 @@ class SlimmeWarmtepompSensor(SensorEntity):
                 if marge < waakhond_marge:
                     ideal_setpoint = actuele_wp_temp + waakhond_marge
 
+        # --- VOORSPELLENDE PRIJS LOGICA (Kijkt 2 uur vooruit) ---
         price_sensor_id = self._config.get("electricity_price_sensor")
         huidige_prijs = self._get_float(price_sensor_id, 0.20) if price_sensor_id else 0.20
+        toekomstige_prijs = huidige_prijs
+
+        if price_sensor_id:
+            price_state = self.hass.states.get(price_sensor_id)
+            if price_state:
+                attrs = price_state.attributes
+                raw_prices = []
+                for key in ["raw_today", "rawToday", "forecast"]:
+                    if key in attrs and isinstance(attrs[key], list):
+                        raw_prices.extend(attrs[key])
+                for key in ["raw_tomorrow", "rawTomorrow"]:
+                    if key in attrs and isinstance(attrs[key], list):
+                        raw_prices.extend(attrs[key])
+                        
+                if raw_prices:
+                    target_time = now + timedelta(hours=2)
+                    for entry in raw_prices:
+                        start_str = entry.get("start") or entry.get("time")
+                        val = entry.get("value") or entry.get("price")
+                        if start_str and val is not None:
+                            parsed_time = dt_util.parse_datetime(str(start_str))
+                            if parsed_time and parsed_time >= target_time:
+                                toekomstige_prijs = float(val)
+                                break
+
+        prijs_verschil = toekomstige_prijs - huidige_prijs
+        if prijs_verschil < -0.05:
+            ideal_setpoint -= 0.5
+        elif prijs_verschil > 0.05:
+            ideal_setpoint += 0.8
+
         if price_sensor_id and huidige_prijs > max_prijs:
             ideal_setpoint = actuele_wp_temp - 2.0
 
         if actueel_buiten < bivalent_grens:
             _LOGGER.warning(f"Bivalente grens bereikt: {actueel_buiten}°C")
 
+        # --- P1 TERUGLEVERING & PV-BOOST ---
         pv_sensor_id = self._config.get("pv_power_sensor")
         pv_power = self._get_float(pv_sensor_id, 0.0)
-        if pv_power < -1500:
+        if pv_power > 500:
             ideal_setpoint += pv_boost_val
 
         if ideal_setpoint > max_flow_grens:
             ideal_setpoint = max_flow_grens
 
-        # 5. Flow & COP berekening
+        # --- VERMOGEN BEREKENEN (Directte sensor OF Volt × Stroom) + COP ---
         flow_id_1 = self._config.get("flow_rate_sensor_1")
         flow_id_2 = self._config.get("flow_rate_sensor_2")
         power_sensor_id = self._config.get("power_sensor")
+        voltage_sensor_id = self._config.get("voltage_sensor")
+        current_sensor_id = self._config.get("current_sensor")
         
         flow_l_h = self._get_flow_in_liter_per_hour(flow_id_1) + self._get_flow_in_liter_per_hour(flow_id_2)
-        power_w = self._get_float(power_sensor_id, 0.0)
+        
+        # Bepaal elektrisch vermogen in Watts
+        power_w = self._get_power_in_watts(power_sensor_id)
+        if power_w == 0.0 and voltage_sensor_id and current_sensor_id:
+            voltage = self._get_float(voltage_sensor_id, 230.0)
+            current = self._get_float(current_sensor_id, 0.0)
+            power_w = voltage * current
         
         p_thermisch_kw = 0.0
         cop_waarde = 0.0
@@ -239,7 +284,7 @@ class SlimmeWarmtepompSensor(SensorEntity):
             "actuele_aanvoer": actuele_aanvoer,
             "actuele_retour": actuele_retour,
             "totaal_flow_l_h": flow_l_h,
-            "elektrisch_vermogen_w": power_w,
+            "elektrisch_vermogen_w": round(power_w, 1),
             "geleerde_afkoel_coefficient": round(self._learned_cooling_coeff, 5),
             "voorspelde_afkoeling_horizon": round(predicted_future_cooling, 2)
         }
