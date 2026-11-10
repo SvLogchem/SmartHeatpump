@@ -38,40 +38,42 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     price_sensor_configured = bool(config_entry.data.get("electricity_price_sensor"))
     
     if control_mode == "aanvoer":
-        basis_naam = "Basis Aanvoertemperatuur"
+        basis_naam = "Stooklijn: Basis Aanvoertemperatuur"
         basis_default = 28.0
     else:
-        basis_naam = "Basis Retourtemperatuur"
+        basis_naam = "Stooklijn: Basis Retourtemperatuur"
         basis_default = 22.0
 
     entiteiten = [
+        # --- BLOK 1: ANTICIPATIE & SLIMME EXTRA'S ---
+        WarmtepompInstelling(hass, config_entry, "Anticipatie: Horizon", "horizon", 4.0, 1.0, 12.0, 1.0, "uur"),
+        WarmtepompInstelling(hass, config_entry, "Anticipatie: Minimum Run-Time", "minimum_runtime", 15.0, 5.0, 45.0, 1.0, "min"),
+        WarmtepompInstelling(hass, config_entry, "Anticipatie: Waakhond Marge", "waakhond_marge", 0.5, 0.1, 2.0, 0.1, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Anticipatie: Zon Compensatie (Max)", "zon_factor", 2.0, 0.0, 5.0, 0.1, "°C"),
+        
+        # --- BLOK 2: KLOKPROGRAMMA & DAG/NACHT SETPOINTS ---
+        WarmtepompInstelling(hass, config_entry, "Klok: Dag Eind Uur", "dag_eind", 21.0, 0.0, 23.0, 1.0, "uur"),
+        WarmtepompInstelling(hass, config_entry, "Klok: Dag Start Uur", "dag_start", 9.0, 0.0, 23.0, 1.0, "uur"),
+        WarmtepompInstelling(hass, config_entry, "Klok: Gewenste Temp Dag", "setpoint_dag", 21.0, 15.0, 25.0, 0.1, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Klok: Gewenste Temp Nacht", "setpoint_nacht", 20.4, 15.0, 25.0, 0.1, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Klok: Nacht Eind Uur", "nacht_eind", 7.0, 0.0, 23.0, 1.0, "uur"),
+        WarmtepompInstelling(hass, config_entry, "Klok: Nacht Start Uur", "nacht_start", 23.0, 0.0, 23.0, 1.0, "uur"),
+        
+        # --- BLOK 3: STOOKLIJN & BASIS ---
         WarmtepompInstelling(hass, config_entry, basis_naam, "basis_temperatuur", basis_default, 15.0, 45.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Handmatige Setpoint Offset", "setpoint_offset", 0.0, -5.0, 5.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Stooklijn Helling", "stooklijn", 0.4, 0.1, 1.5, 0.05, ""),
-        WarmtepompInstelling(hass, config_entry, "Gewenste Kamertemperatuur Dag", "setpoint_dag", 21.0, 15.0, 25.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Gewenste Kamertemperatuur Nacht", "setpoint_nacht", 20.4, 15.0, 25.0, 0.1, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Stooklijn: Handmatige Offset", "setpoint_offset", 0.0, -5.0, 5.0, 0.1, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Stooklijn: Helling", "stooklijn", 0.4, 0.1, 1.5, 0.05, ""),
         
-        # Tijden
-        WarmtepompInstelling(hass, config_entry, "Dag Start Uur", "dag_start", 9.0, 0.0, 23.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Dag Eind Uur", "dag_eind", 21.0, 0.0, 23.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Nacht Start Uur", "nacht_start", 23.0, 0.0, 23.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Nacht Eind Uur", "nacht_eind", 7.0, 0.0, 23.0, 1.0, "uur"),
-        
-        # Slimme Extra's
-        WarmtepompInstelling(hass, config_entry, "Anticipatie Horizon", "horizon", 4.0, 1.0, 12.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Zon Compensatie (Max)", "zon_factor", 2.0, 0.0, 5.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Minimum Run-Time", "minimum_runtime", 15.0, 5.0, 45.0, 1.0, "min"),
-        WarmtepompInstelling(hass, config_entry, "Waakhond Marge", "waakhond_marge", 0.5, 0.1, 2.0, 0.1, "°C"),
-        
-        # Veiligheid & Pro
-        WarmtepompInstelling(hass, config_entry, "Maximale Aanvoer/Vloer Temp", "max_flow_temp", 40.0, 30.0, 55.0, 0.5, "°C"),
-        WarmtepompInstelling(hass, config_entry, "PV-Overschot Boost", "pv_boost", 1.0, 0.0, 3.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Bivalente Vorst-waarschuwing", "bivalent_temp", -7.0, -15.0, 0.0, 0.5, "°C"),
+        # --- BLOK 4: VEILIGHEID & PRO ---
+        WarmtepompInstelling(hass, config_entry, "Veiligheid: Bivalente Vorst-waarschuwing", "bivalent_temp", -7.0, -15.0, 0.0, 0.5, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Veiligheid: Maximale Aanvoer/Vloer Temp", "max_flow_temp", 40.0, 30.0, 55.0, 0.5, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Veiligheid: PV-Overschot Boost", "pv_boost", 1.0, 0.0, 3.0, 0.1, "°C"),
     ]
 
+    # Voeg max stroomprijs alleen toe indien geconfigureerd
     if price_sensor_configured:
         entiteiten.append(
-            WarmtepompInstelling(hass, config_entry, "Max Stroomprijs voor Verwarmen", "max_stroomprijs", 0.35, 0.05, 1.00, 0.01, "€/kWh")
+            WarmtepompInstelling(hass, config_entry, "Veiligheid: Max Stroomprijs voor Verwarmen", "max_stroomprijs", 0.35, 0.05, 1.00, 0.01, "€/kWh")
         )
 
     async_add_entities(entiteiten)
