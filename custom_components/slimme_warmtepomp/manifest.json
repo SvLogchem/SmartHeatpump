@@ -1,0 +1,12 @@
+{
+  "domain": "slimme_warmtepomp",
+  "name": "Slimme Warmtepomp (Local)",
+  "documentation": "https://github.com/SvLogchem/SmartHeatpump",
+  "issue_tracker": "https://github.com/SvLogchem/SmartHeatpump/issues",
+  "dependencies": [],
+  "codeowners": ["@SvLogchem"],
+  "requirements": [],
+  "config_flow": true,
+  "version": "1.0.0",
+  "iot_class": "calculated"
+}
