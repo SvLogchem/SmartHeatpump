@@ -46,6 +46,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     entiteiten = [
         WarmtepompInstelling(hass, config_entry, basis_naam, "basis_temperatuur", basis_default, 15.0, 45.0, 0.1, "°C"),
+        WarmtepompInstelling(hass, config_entry, "Handmatige Setpoint Offset", "setpoint_offset", 0.0, -5.0, 5.0, 0.1, "°C"),
         WarmtepompInstelling(hass, config_entry, "Stooklijn Helling", "stooklijn", 0.4, 0.1, 1.5, 0.05, ""),
         WarmtepompInstelling(hass, config_entry, "Gewenste Kamertemperatuur Dag", "setpoint_dag", 21.0, 15.0, 25.0, 0.1, "°C"),
         WarmtepompInstelling(hass, config_entry, "Gewenste Kamertemperatuur Nacht", "setpoint_nacht", 20.4, 15.0, 25.0, 0.1, "°C"),
@@ -68,7 +69,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         WarmtepompInstelling(hass, config_entry, "Bivalente Vorst-waarschuwing", "bivalent_temp", -7.0, -15.0, 0.0, 0.5, "°C"),
     ]
 
-    # Voeg max stroomprijs alleen toe als de prijs-sensor daadwerkelijk is geconfigureerd
     if price_sensor_configured:
         entiteiten.append(
             WarmtepompInstelling(hass, config_entry, "Max Stroomprijs voor Verwarmen", "max_stroomprijs", 0.35, 0.05, 1.00, 0.01, "€/kWh")
