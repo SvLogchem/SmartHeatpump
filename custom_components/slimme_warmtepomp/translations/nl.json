@@ -2,18 +2,52 @@
   "config": {
     "step": {
       "user": {
-        "title": "Slimme Warmtepomp Configureren",
-        "description": "Selecteer de entiteiten van jouw warmtepomp installatie.",
+        "title": "Slimme Warmtepomp",
+        "description": "Configureer de instellingen en sensoren voor je slimme warmtepomp regeling.",
         "data": {
-          "control_mode": "Regeling (Aanvoer of Retour)",
-          "target_setpoint_entity": "Doel Setpoint Entiteit van Warmtepomp (bijv. Retour/Aanvoer number)",
-          "heatpump_switch": "Aan/Uit Schakelaar Warmtepomp",
+          "control_mode": "Stuurmodus (Aanvoer of Retour)",
+          "target_setpoint_entity": "Doel Setpoint Entiteit (Number)",
+          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar",
+          "flow_rate_sensor_1": "Waterstroom Sensor 1",
+          "flow_rate_sensor_2": "Waterstroom Sensor 2",
+          "power_sensor": "Elektrisch Vermogen Sensor (Optioneel)",
+          "voltage_sensor": "Spanning Sensor (Volt)",
+          "current_sensor": "Stroom Sensor (Ampère)",
+          "electricity_price_sensor": "Stroomprijzen Sensor",
+          "pv_power_sensor": "P1 Teruglevering Sensor (Zonnepanelen)",
+          "dhw_status_sensor": "Tapwater (DHW) Status Sensor",
           "room_temp_sensor": "Ruimtetemperatuur Sensor",
           "outside_temp_sensor": "Buitentemperatuur Sensor",
-          "weather_entity": "Weersvoorspelling (Weer Entiteit)",
+          "weather_entity": "Weer Entiteit (Voorspelling)",
           "flow_temp_sensor": "Aanvoertemperatuur Sensor",
           "return_temp_sensor": "Retourtemperatuur Sensor",
-          "compressor_freq_sensor": "Compressor Frequentie (Hz)"
+          "compressor_freq_sensor": "Compressor Frequentie Sensor"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Slimme Warmtepomp Opties",
+        "data": {
+          "control_mode": "Stuurmodus (Aanvoer of Retour)",
+          "target_setpoint_entity": "Doel Setpoint Entiteit (Number)",
+          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar",
+          "flow_rate_sensor_1": "Waterstroom Sensor 1",
+          "flow_rate_sensor_2": "Waterstroom Sensor 2",
+          "power_sensor": "Elektrisch Vermogen Sensor (Optioneel)",
+          "voltage_sensor": "Spanning Sensor (Volt)",
+          "current_sensor": "Stroom Sensor (Ampère)",
+          "electricity_price_sensor": "Stroomprijzen Sensor",
+          "pv_power_sensor": "P1 Teruglevering Sensor (Zonnepanelen)",
+          "dhw_status_sensor": "Tapwater (DHW) Status Sensor",
+          "room_temp_sensor": "Ruimtetemperatuur Sensor",
+          "outside_temp_sensor": "Buitentemperatuur Sensor",
+          "weather_entity": "Weer Entiteit (Voorspelling)",
+          "flow_temp_sensor": "Aanvoertemperatuur Sensor",
+          "return_temp_sensor": "Retourtemperatuur Sensor",
+          "compressor_freq_sensor": "Compressor Frequentie Sensor"
         }
       }
     }
