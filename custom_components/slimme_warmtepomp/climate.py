@@ -4,7 +4,6 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACMode,
     HVACAction,
-    PRECISION_TENTHS,
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from .const import DOMAIN
@@ -24,7 +23,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         
         # Forceer precisie en stapgrootte op 0.1 graad
-        self._attr_precision = PRECISION_TENTHS
+        self._attr_precision = 0.1
         self._attr_target_temp_step = 0.1
         
         self._attr_min_temp = 15.0
@@ -35,7 +34,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
 
     @property
     def precision(self) -> float:
-        return PRECISION_TENTHS
+        return 0.1
 
     @property
     def target_temp_step(self) -> float:
@@ -72,7 +71,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         if hvac_mode == HVACMode.HEAT:
             await self.hass.services.async_call("switch", "turn_on", {"entity_id": self._tuya_switch})
-        elif hvac_mode == HVACMode.OFF:
+        elif hvac_mode == HVACAction.OFF:
             await self.hass.services.async_call("switch", "turn_off", {"entity_id": self._tuya_switch})
             
         self._attr_hvac_mode = hvac_mode
