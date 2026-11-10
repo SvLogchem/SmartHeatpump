@@ -1,5 +1,5 @@
 """Number platform for Slimme Warmtepomp."""
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.const import EntityCategory
 from .const import DOMAIN
 
@@ -16,12 +16,12 @@ class WarmtepompInstelling(NumberEntity):
         self._attr_native_step = step
         self._attr_native_unit_of_measurement = unit
         
-        # Groepeer deze instellingen onder de Configuratie categorie in HA
+        # Toon als invulveld in plaats van een schuifregelaar
+        self._attr_mode = NumberMode.BOX
         self._attr_entity_category = EntityCategory.CONFIG
 
     @property
     def device_info(self):
-        """Koppel deze slider aan het centrale warmtepomp apparaat."""
         return {
             "identifiers": {(DOMAIN, self._config_entry.entry_id)},
             "name": "Slimme Warmtepomp",
