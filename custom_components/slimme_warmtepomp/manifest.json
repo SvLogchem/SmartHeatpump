@@ -1,6 +1,6 @@
 {
   "domain": "slimme_warmtepomp",
-  "name": "Slimme Warmtepomp (Local)",
+  "name": "Slimme Warmtepomp",
   "documentation": "https://github.com/SvLogchem/SmartHeatpump",
   "issue_tracker": "https://github.com/SvLogchem/SmartHeatpump/issues",
   "dependencies": [],
