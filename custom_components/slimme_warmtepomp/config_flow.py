@@ -17,13 +17,33 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=self._get_schema(), errors=errors
         )
 
+    async def async_step_reconfigure(self, user_input=None):
+        """Maakt het mogelijk om de integratie te herconfigureren zonder te verwijderen."""
+        errors = {}
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                data=user_input,
+            )
+
+        current_data = {**entry.data, **entry.options}
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self._get_schema(current_data),
+            errors=errors,
+        )
+
     @staticmethod
     def async_get_options_flow(config_entry):
         return SlimmeWarmtepompOptionsFlowHandler(config_entry)
 
-    def _get_schema(self):
+    def _get_schema(self, defaults=None):
+        if defaults is None:
+            defaults = {}
         return vol.Schema({
-            vol.Required("control_mode", default="retour"): selector.SelectSelector(
+            vol.Required("control_mode", default=defaults.get("control_mode", "retour")): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
                         {"value": "retour", "label": "Sturen op Retourtemperatuur"},
@@ -32,52 +52,52 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     mode=selector.SelectSelectorMode.DROPDOWN
                 )
             ),
-            vol.Required("target_setpoint_entity"): selector.EntitySelector(
+            vol.Required("target_setpoint_entity", default=defaults.get("target_setpoint_entity", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="number")
             ),
-            vol.Required("heatpump_switch"): selector.EntitySelector(
+            vol.Required("heatpump_switch", default=defaults.get("heatpump_switch", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch")
             ),
-            vol.Optional("flow_rate_sensor_1"): selector.EntitySelector(
+            vol.Optional("flow_rate_sensor_1", default=defaults.get("flow_rate_sensor_1", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("flow_rate_sensor_2"): selector.EntitySelector(
+            vol.Optional("flow_rate_sensor_2", default=defaults.get("flow_rate_sensor_2", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("power_sensor"): selector.EntitySelector(
+            vol.Optional("power_sensor", default=defaults.get("power_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("voltage_sensor"): selector.EntitySelector(
+            vol.Optional("voltage_sensor", default=defaults.get("voltage_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("current_sensor"): selector.EntitySelector(
+            vol.Optional("current_sensor", default=defaults.get("current_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("electricity_price_sensor"): selector.EntitySelector(
+            vol.Optional("electricity_price_sensor", default=defaults.get("electricity_price_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("pv_power_sensor"): selector.EntitySelector(
+            vol.Optional("pv_power_sensor", default=defaults.get("pv_power_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional("dhw_status_sensor"): selector.EntitySelector(
+            vol.Optional("dhw_status_sensor", default=defaults.get("dhw_status_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Required("room_temp_sensor"): selector.EntitySelector(
+            vol.Required("room_temp_sensor", default=defaults.get("room_temp_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
             ),
-            vol.Optional("outside_temp_sensor"): selector.EntitySelector(
+            vol.Optional("outside_temp_sensor", default=defaults.get("outside_temp_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
             ),
-            vol.Optional("weather_entity"): selector.EntitySelector(
+            vol.Optional("weather_entity", default=defaults.get("weather_entity", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="weather")
             ),
-            vol.Optional("flow_temp_sensor"): selector.EntitySelector(
+            vol.Optional("flow_temp_sensor", default=defaults.get("flow_temp_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
             ),
-            vol.Optional("return_temp_sensor"): selector.EntitySelector(
+            vol.Optional("return_temp_sensor", default=defaults.get("return_temp_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
             ),
-            vol.Optional("compressor_freq_sensor"): selector.EntitySelector(
+            vol.Optional("compressor_freq_sensor", default=defaults.get("compressor_freq_sensor", "")): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
         })
@@ -89,13 +109,9 @@ class SlimmeWarmtepompOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
-            # Sla de gewijzigde instellingen direct op in de configuratie
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, data=user_input
-            )
-            return self.async_create_entry(title="", data={})
+            return self.async_create_entry(title="", data=user_input)
 
-        data = self.config_entry.data
+        data = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
