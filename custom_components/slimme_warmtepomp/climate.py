@@ -71,7 +71,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         if hvac_mode == HVACMode.HEAT:
             await self.hass.services.async_call("switch", "turn_on", {"entity_id": self._tuya_switch})
-        elif hvac_mode == HVACAction.OFF:
+        elif hvac_mode == HVACMode.OFF:
             await self.hass.services.async_call("switch", "turn_off", {"entity_id": self._tuya_switch})
             
         self._attr_hvac_mode = hvac_mode
