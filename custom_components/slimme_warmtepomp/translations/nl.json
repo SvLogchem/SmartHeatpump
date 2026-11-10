@@ -6,6 +6,7 @@
         "description": "Selecteer de entiteiten van jouw warmtepomp installatie.",
         "data": {
           "control_mode": "Regeling (Aanvoer of Retour)",
+          "target_setpoint_entity": "Doel Setpoint Entiteit van Warmtepomp (bijv. Retour/Aanvoer number)",
           "heatpump_switch": "Aan/Uit Schakelaar Warmtepomp",
           "room_temp_sensor": "Ruimtetemperatuur Sensor",
           "outside_temp_sensor": "Buitentemperatuur Sensor",
