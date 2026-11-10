@@ -44,7 +44,9 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         self._is_running = False
         self._state = 22.0
         
+        # Zelflerende modellen
         self._learned_cooling_coeff = 0.025
+        self._learned_min_freq = 30.0
         self._last_room_temp = None
         self._last_update_time = None
         
@@ -53,6 +55,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         self.debug_zon_reductie = 0.0
         self.debug_toekomstige_prijs = 0.0
         self.debug_voorspelde_afkoeling = 0.0
+        self.is_defrosting_active = False
 
         self.calculated_thermisch_kw = 0.0
         self.calculated_cop = 0.0
@@ -107,7 +110,25 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         actueel_buiten = float(outside_state.state) if outside_state and outside_state.state not in ['unknown', 'unavailable'] else 5.0
 
         freq = self._get_float(self._config.get("compressor_freq_sensor"), 0.0)
-        is_heating = freq >= 30.0
+        actuele_retour = self._get_float(self._config.get("return_temp_sensor"), 20.0)
+        actuele_aanvoer = self._get_float(self._config.get("flow_temp_sensor"), 25.0)
+
+        is_heating = freq >= self._learned_min_freq
+
+        # --- ONTDOOI-DETECTIE (DEFROST) ---
+        # Als de warmtepomp actief draait maar de aanvoertemperatuur lager is dan de retour, 
+        # is de koudemiddelcyclus omgedraaid en vindt er een ontdooicyclus plaats.
+        delta_t_check = actuele_aanvoer - actuele_retour
+        self.is_defrosting_active = is_heating and (delta_t_check < 0)
+
+        if self.is_defrosting_active:
+            _LOGGER.debug("Ontdooicyclus gedetecteerd: berekeningen en zelfleren worden tijdelijk bevroren.")
+            # Tijdens defrost slaan we het updaten van leer-modellen en setpoint-wijzigingen over om uitschieters te voorkomen
+            return
+
+        # Zelflerende minimale frequentie bijwerken (alleen bij normale werking)
+        if 10.0 <= freq < self._learned_min_freq:
+            self._learned_min_freq = max(15.0, (0.95 * self._learned_min_freq) + (0.05 * freq))
         
         if self._last_room_temp is not None and self._last_update_time is not None and not is_heating:
             time_diff_hours = (now - self._last_update_time).total_seconds() / 3600.0
@@ -144,8 +165,6 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         bivalent_grens = self._get_float("number.slimme_wp_bivalent_temp", -7.0)
 
         control_mode = self._config.get("control_mode", "retour")
-        actuele_retour = self._get_float(self._config.get("return_temp_sensor"), 20.0)
-        actuele_aanvoer = self._get_float(self._config.get("flow_temp_sensor"), 25.0)
         actuele_wp_temp = actuele_aanvoer if control_mode == "aanvoer" else actuele_retour
 
         currently_running = is_heating
@@ -217,7 +236,6 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         if predicted_future_cooling > 0.3:
             compensation_part += predicted_future_cooling * 1.5
 
-        # Voeg hier de handmatige setpoint offset toe aan de berekening
         ideal_setpoint = base_setpoint + setpoint_offset + weather_part + compensation_part - sun_deduction
 
         if dag_start <= huidig_uur < dag_eind:
@@ -230,6 +248,12 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
                 min_vloer_behoud = base_setpoint
                 if ideal_setpoint < min_vloer_behoud:
                     ideal_setpoint = min_vloer_behoud
+
+        # Anti-overshoot frequentie modulatie
+        temp_margin_to_target = actief_ruimte_setpoint - current_room
+        if freq > 35.0 and temp_margin_to_target < 0.4:
+            modulation_reduction = min(1.5, (freq - 30.0) * 0.05)
+            ideal_setpoint -= modulation_reduction
 
         if self._is_running and self._compressor_start_time:
             draaitijd = now - self._compressor_start_time
@@ -304,15 +328,13 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         self.calculated_thermisch_kw = 0.0
         self.calculated_cop = 0.0
         
-        if self.calculated_flow_lh > 0:
-            delta_t = actuele_aanvoer - actuele_retour
-            if delta_t > 0:
-                self.calculated_thermisch_kw = round((self.calculated_flow_lh * 4.186 * delta_t) / 3600.0, 2)
-                if self.calculated_elektrisch_w > 100:
-                    p_elektrisch_kw = self.calculated_elektrisch_w / 1000.0
-                    cop = round(self.calculated_thermisch_kw / p_elektrisch_kw, 2)
-                    if 1.0 <= cop <= 8.0:
-                        self.calculated_cop = cop
+        if self.calculated_flow_lh > 0 and delta_t_check > 0:
+            self.calculated_thermisch_kw = round((self.calculated_flow_lh * 4.186 * delta_t_check) / 3600.0, 2)
+            if self.calculated_elektrisch_w > 100:
+                p_elektrisch_kw = self.calculated_elektrisch_w / 1000.0
+                cop = round(self.calculated_thermisch_kw / p_elektrisch_kw, 2)
+                if 1.0 <= cop <= 8.0:
+                    self.calculated_cop = cop
 
         self._state = round(ideal_setpoint, 1)
 
@@ -330,6 +352,18 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
     @property
     def native_value(self):
         return self._state
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "voorspelde_buiten_temp_over_horizon": round(self.debug_verwacht_buiten, 1),
+            "verwachte_bewolking_procent": round(self.debug_verwacht_bewolking, 0),
+            "zon_compensatie_reductie_c": round(self.debug_zon_reductie, 2),
+            "voorspelde_afkoeling_c": round(self.debug_voorspelde_afkoeling, 2),
+            "geleerde_min_frequentie_hz": round(self._learned_min_freq, 1),
+            "geleerde_afkoel_coefficient": round(self._learned_cooling_coeff, 5),
+            "ontdooi_actief": self.is_defrosting_active,
+        }
 
     def _get_float(self, entity_id, default_value):
         if not entity_id: return default_value
