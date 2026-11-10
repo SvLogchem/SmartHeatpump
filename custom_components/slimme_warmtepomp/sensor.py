@@ -23,7 +23,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
         self._state = 22.0
 
     async def async_update(self):
-        """Bereken het ideale setpoint op basis van stooklijn, weer, zon en waakhond."""
         base_setpoint = self._get_float("number.slimme_wp_basis_temperatuur", 22.0)
         helling = self._get_float("number.slimme_wp_stooklijn", 0.4)
         horizon_uren = int(self._get_float("number.slimme_wp_horizon", 4.0))
@@ -38,7 +37,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
 
         actuele_wp_temp = actuele_aanvoer if control_mode == "aanvoer" else actuele_retour
 
-        # Compressor run-time tracking (> 30Hz is draaien)
         currently_running = freq >= 30.0
         if currently_running and not self._is_running:
             self._compressor_start_time = dt_util.utcnow()
@@ -47,7 +45,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
             self._is_running = False
             self._compressor_start_time = None
 
-        # Weer & Voorspelling ophalen
         actueel_buiten = self._get_float(self._outside_sensor_id, 10.0)
         verwacht_buiten = actueel_buiten
         verwacht_bewolking = 100.0
@@ -71,11 +68,9 @@ class SlimmeWarmtepompSensor(SensorEntity):
             except Exception as e:
                 _LOGGER.warning("Kon weersvoorspelling niet ophalen: %s", e)
 
-        # Gecombineerde buitentemperatuur (70% actueel / 30% verwacht)
         gecombineerd_buiten = (actueel_buiten * 0.7) + (verwacht_buiten * 0.3)
         weather_part = helling * (20.0 - gecombineerd_buiten)
 
-        # Zonnecompensatie met elevatie
         sun_deduction = 0.0
         sun_state = self.hass.states.get("sun.sun")
         if sun_state:
@@ -85,16 +80,13 @@ class SlimmeWarmtepompSensor(SensorEntity):
                 zon_kracht = min(elevation / 45.0, 1.0)
                 sun_deduction = zon_factor * cloud_factor * zon_kracht
 
-        # Ruimtecompensatie
         target_room = 21.0
         current_room = self._get_float(self._room_sensor_id, target_room)
         room_error = target_room - current_room
         compensation_part = room_error * 2.0
 
-        # Ideaal setpoint berekenen
         ideal_setpoint = base_setpoint + weather_part + compensation_part - sun_deduction
 
-        # De Waakhond (Anti-pendel minimum runtime)
         if self._is_running and self._compressor_start_time:
             draaitijd = dt_util.utcnow() - self._compressor_start_time
             if draaitijd.total_seconds() < (minimum_minuten * 60):
