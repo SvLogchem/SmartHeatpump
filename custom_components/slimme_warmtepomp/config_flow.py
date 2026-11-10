@@ -8,7 +8,7 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        """Beheer de eerste stap van de UI configuratie."""
+        """Handle the initial step."""
         errors = {}
 
         if user_input is not None:
