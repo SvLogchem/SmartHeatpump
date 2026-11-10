@@ -1,5 +1,11 @@
 """Climate platform for Slimme Warmtepomp."""
-from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature, HVACMode, HVACAction
+from homeassistant.components.climate import (
+    ClimateEntity,
+    ClimateEntityFeature,
+    HVACMode,
+    HVACAction,
+    PRECISION_TENTHS,
+)
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from .const import DOMAIN
 
@@ -17,7 +23,10 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
         self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         
+        # Forceer precisie en stapgrootte op 0.1 graad
+        self._attr_precision = PRECISION_TENTHS
         self._attr_target_temp_step = 0.1
+        
         self._attr_min_temp = 15.0
         self._attr_max_temp = 25.0
         
@@ -25,8 +34,15 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
         self._attr_hvac_mode = HVACMode.OFF
 
     @property
+    def precision(self) -> float:
+        return PRECISION_TENTHS
+
+    @property
+    def target_temp_step(self) -> float:
+        return 0.1
+
+    @property
     def device_info(self):
-        """Koppel de thermostaat aan het centrale warmtepomp apparaat."""
         return {
             "identifiers": {(DOMAIN, self._config_entry.entry_id)},
             "name": "Slimme Warmtepomp",
