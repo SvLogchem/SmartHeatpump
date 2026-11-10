@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Slimme Warmtepomp Configureren",
+        "description": "Selecteer de entiteiten van jouw warmtepomp installatie.",
+        "data": {
+          "control_mode": "Regeling (Aanvoer of Retour)",
+          "heatpump_switch": "Aan/Uit Schakelaar Warmtepomp",
+          "room_temp_sensor": "Ruimtetemperatuur Sensor",
+          "outside_temp_sensor": "Buitentemperatuur Sensor",
+          "weather_entity": "Weersvoorspelling (Weer Entiteit)",
+          "flow_temp_sensor": "Aanvoertemperatuur Sensor",
+          "return_temp_sensor": "Retourtemperatuur Sensor",
+          "compressor_freq_sensor": "Compressor Frequentie (Hz)"
+        }
+      }
+    }
+  }
+}
