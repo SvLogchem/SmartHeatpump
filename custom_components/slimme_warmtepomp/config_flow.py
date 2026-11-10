@@ -24,6 +24,9 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     mode=selector.SelectSelectorMode.DROPDOWN
                 )
             ),
+            vol.Required("target_setpoint_entity"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="number")
+            ),
             vol.Required("heatpump_switch"): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch")
             ),
