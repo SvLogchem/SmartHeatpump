@@ -8,7 +8,6 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial step."""
         errors = {}
 
         if user_input is not None:
@@ -29,6 +28,24 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             vol.Required("heatpump_switch"): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch")
+            ),
+            vol.Optional("flow_rate_sensor_1"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional("flow_rate_sensor_2"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional("power_sensor"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional("electricity_price_sensor"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional("pv_power_sensor"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional("dhw_status_sensor"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
             ),
             vol.Required("room_temp_sensor"): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
