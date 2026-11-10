@@ -13,7 +13,19 @@ class SlimmeWarmtepompBaseSensor(SensorEntity):
     def __init__(self, hass, config_entry):
         self.hass = hass
         self._config = config_entry.data
+        self._config_entry = config_entry
         self._entry_id = config_entry.entry_id
+
+    @property
+    def device_info(self):
+        """Groepeert alle sensoren onder het centrale warmtepomp apparaat."""
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Slimme Warmtepomp",
+            "manufacturer": "Custom HEMS",
+            "model": "Zelflerende Regeling",
+            "sw_version": "1.0.0",
+        }
 
 class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
     """Hoofdsensor: Berekent het ideale water-setpoint."""
@@ -31,12 +43,10 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         self._is_running = False
         self._state = 22.0
         
-        # Zelflerende variabelen voor afkoeling
         self._learned_cooling_coeff = 0.025
         self._last_room_temp = None
         self._last_update_time = None
         
-        # Gedeelde data voor de andere sensoren
         self.calculated_thermisch_kw = 0.0
         self.calculated_cop = 0.0
         self.calculated_elektrisch_w = 0.0
@@ -213,7 +223,6 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
                 if marge < waakhond_marge:
                     ideal_setpoint = actuele_wp_temp + waakhond_marge
 
-        # Prijsvoorspelling logica
         price_sensor_id = self._config.get("electricity_price_sensor")
         huidige_prijs = self._get_float(price_sensor_id, 0.20) if price_sensor_id else 0.20
         toekomstige_prijs = huidige_prijs
@@ -261,7 +270,6 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         if ideal_setpoint > max_flow_grens:
             ideal_setpoint = max_flow_grens
 
-        # Berekening voor Flow, Vermogen en COP
         flow_id_1 = self._config.get("flow_rate_sensor_1")
         flow_id_2 = self._config.get("flow_rate_sensor_2")
         power_sensor_id = self._config.get("power_sensor")
@@ -291,10 +299,6 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
                         self.calculated_cop = cop
 
         self._state = round(ideal_setpoint, 1)
-        self._attr_extra_state_attributes = {
-            "geleerde_afkoel_coefficient": round(self._learned_cooling_coeff, 5),
-            "voorspelde_afkoeling_horizon": round(predicted_future_cooling, 2)
-        }
 
     @property
     def native_value(self):
@@ -310,7 +314,6 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
 
 
 class SlimmeWarmtepompThermischVermogenSensor(SlimmeWarmtepompBaseSensor):
-    """Afzonderlijke sensor voor het thermisch vermogen in kW."""
     def __init__(self, hass, config_entry, setpoint_sensor):
         super().__init__(hass, config_entry)
         self._setpoint_sensor = setpoint_sensor
@@ -325,7 +328,6 @@ class SlimmeWarmtepompThermischVermogenSensor(SlimmeWarmtepompBaseSensor):
 
 
 class SlimmeWarmtepompCopSensor(SlimmeWarmtepompBaseSensor):
-    """Afzonderlijke sensor voor de COP (rendement)."""
     def __init__(self, hass, config_entry, setpoint_sensor):
         super().__init__(hass, config_entry)
         self._setpoint_sensor = setpoint_sensor
@@ -339,7 +341,6 @@ class SlimmeWarmtepompCopSensor(SlimmeWarmtepompBaseSensor):
 
 
 class SlimmeWarmtepompElektrischVermogenSensor(SlimmeWarmtepompBaseSensor):
-    """Afzonderlijke sensor voor het elektrisch vermogen in Watt."""
     def __init__(self, hass, config_entry, setpoint_sensor):
         super().__init__(hass, config_entry)
         self._setpoint_sensor = setpoint_sensor
