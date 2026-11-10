@@ -1,10 +1,12 @@
 """Climate platform for Slimme Warmtepomp."""
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature, HVACMode, HVACAction
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
+from .const import DOMAIN
 
 class SlimmeWarmtepompThermostaat(ClimateEntity):
     def __init__(self, hass, config_entry):
         self.hass = hass
+        self._config_entry = config_entry
         self._attr_name = "Slimme Warmtepomp Thermostaat"
         self._attr_unique_id = f"{config_entry.entry_id}_climate"
         
@@ -15,8 +17,23 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
         self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         
+        self._attr_target_temp_step = 0.1
+        self._attr_min_temp = 15.0
+        self._attr_max_temp = 25.0
+        
         self._attr_target_temperature = 21.0
         self._attr_hvac_mode = HVACMode.OFF
+
+    @property
+    def device_info(self):
+        """Koppel de thermostaat aan het centrale warmtepomp apparaat."""
+        return {
+            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
+            "name": "Slimme Warmtepomp",
+            "manufacturer": "Custom HEMS",
+            "model": "Zelflerende Regeling",
+            "sw_version": "1.0.0",
+        }
 
     @property
     def current_temperature(self):
