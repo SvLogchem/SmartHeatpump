@@ -1,7 +1,7 @@
 """Sensor platform for Slimme Warmtepomp."""
 import logging
 from datetime import timedelta
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity, SensorStateClass, SensorDeviceClass
 from homeassistant.const import UnitOfPower, UnitOfTemperature
 from homeassistant.util import dt as dt_util
 from .const import DOMAIN
@@ -9,7 +9,6 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 class SlimmeWarmtepompBaseSensor(SensorEntity):
-    """Gedeelde basisklasse voor de warmtepomp sensoren."""
     def __init__(self, hass, config_entry):
         self.hass = hass
         self._config = config_entry.data
@@ -18,7 +17,6 @@ class SlimmeWarmtepompBaseSensor(SensorEntity):
 
     @property
     def device_info(self):
-        """Groepeert alle sensoren onder het centrale warmtepomp apparaat."""
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
             "name": "Slimme Warmtepomp",
@@ -28,16 +26,19 @@ class SlimmeWarmtepompBaseSensor(SensorEntity):
         }
 
 class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
-    """Hoofdsensor: Berekent het ideale water-setpoint."""
+    """Hoofdsensor: Berekent het Warmtepomp Setpoint."""
     def __init__(self, hass, config_entry):
         super().__init__(hass, config_entry)
-        self._attr_name = "Ideaal Warmtepomp Setpoint"
+        self._attr_name = "Warmtepomp Setpoint"
+        self.entity_id = "sensor.slimme_wp_setpoint"
         self._attr_unique_id = f"{self._entry_id}_setpoint"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
         
         self._room_sensor_id = self._config.get("room_temp_sensor")
         self._outside_sensor_id = self._config.get("outside_temp_sensor")
         self._weather_id = self._config.get("weather_entity")
+        self._target_setpoint_entity = self._config.get("target_setpoint_entity")
         
         self._compressor_start_time = None
         self._is_running = False
@@ -47,6 +48,12 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         self._last_room_temp = None
         self._last_update_time = None
         
+        self.debug_verwacht_buiten = 0.0
+        self.debug_verwacht_bewolking = 100.0
+        self.debug_zon_reductie = 0.0
+        self.debug_toekomstige_prijs = 0.0
+        self.debug_voorspelde_afkoeling = 0.0
+
         self.calculated_thermisch_kw = 0.0
         self.calculated_cop = 0.0
         self.calculated_elektrisch_w = 0.0
@@ -117,6 +124,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         self._last_update_time = now
 
         base_setpoint = self._get_float("number.slimme_wp_basis_temperatuur", 22.0)
+        setpoint_offset = self._get_float("number.slimme_wp_setpoint_offset", 0.0)
         helling = self._get_float("number.slimme_wp_stooklijn", 0.4)
         horizon_uren = int(self._get_float("number.slimme_wp_horizon", 4.0))
         zon_factor = self._get_float("number.slimme_wp_zon_factor", 2.0)
@@ -129,6 +137,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         dag_eind = int(self._get_float("number.slimme_wp_dag_eind", 21.0))
         nacht_start = int(self._get_float("number.slimme_wp_nacht_start", 23.0))
         nacht_eind = int(self._get_float("number.slimme_wp_nacht_eind", 7.0))
+        
         max_prijs = self._get_float("number.slimme_wp_max_stroomprijs", 0.35)
         max_flow_grens = self._get_float("number.slimme_wp_max_flow_temp", 40.0)
         pv_boost_val = self._get_float("number.slimme_wp_pv_boost", 1.0)
@@ -170,9 +179,13 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
             except Exception as e:
                 _LOGGER.warning("Kon weersvoorspelling niet ophalen: %s", e)
 
+        self.debug_verwacht_buiten = verwacht_buiten
+        self.debug_verwacht_bewolking = verwacht_bewolking
+
         predicted_delta_t = current_room - verwacht_buiten
         if predicted_delta_t > 0:
             predicted_future_cooling = self._learned_cooling_coeff * predicted_delta_t * horizon_uren
+        self.debug_voorspelde_afkoeling = predicted_future_cooling
 
         gecombineerd_buiten = (actueel_buiten * 0.7) + (verwacht_buiten * 0.3)
         weather_part = helling * (20.0 - gecombineerd_buiten)
@@ -188,6 +201,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
                 cloud_factor = 1.0 - (verwacht_bewolking / 100.0)
                 zon_kracht = min(elevation / 45.0, 1.0)
                 sun_deduction = zon_factor * cloud_factor * zon_kracht
+        self.debug_zon_reductie = sun_deduction
 
         huidig_uur = now.hour
         in_nacht = False
@@ -203,7 +217,8 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
         if predicted_future_cooling > 0.3:
             compensation_part += predicted_future_cooling * 1.5
 
-        ideal_setpoint = base_setpoint + weather_part + compensation_part - sun_deduction
+        # Voeg hier de handmatige setpoint offset toe aan de berekening
+        ideal_setpoint = base_setpoint + setpoint_offset + weather_part + compensation_part - sun_deduction
 
         if dag_start <= huidig_uur < dag_eind:
             ideal_setpoint += 1.0
@@ -250,6 +265,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
                                 toekomstige_prijs = float(val)
                                 break
 
+        self.debug_toekomstige_prijs = toekomstige_prijs
         prijs_verschil = toekomstige_prijs - huidige_prijs
         if prijs_verschil < -0.05:
             ideal_setpoint -= 0.5
@@ -300,6 +316,17 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
 
         self._state = round(ideal_setpoint, 1)
 
+        if self._target_setpoint_entity:
+            try:
+                await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {"entity_id": self._target_setpoint_entity, "value": self._state},
+                    blocking=False,
+                )
+            except Exception as e:
+                _LOGGER.warning("Kon warmtepomp setpoint niet bijwerken naar %s: %s", self._target_setpoint_entity, e)
+
     @property
     def native_value(self):
         return self._state
@@ -321,6 +348,7 @@ class SlimmeWarmtepompThermischVermogenSensor(SlimmeWarmtepompBaseSensor):
         self._attr_unique_id = f"{self._entry_id}_thermisch_vermogen"
         self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_device_class = SensorDeviceClass.POWER
 
     @property
     def native_value(self):
@@ -348,10 +376,56 @@ class SlimmeWarmtepompElektrischVermogenSensor(SlimmeWarmtepompBaseSensor):
         self._attr_unique_id = f"{self._entry_id}_elektrisch_vermogen"
         self._attr_native_unit_of_measurement = UnitOfPower.WATT
         self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_device_class = SensorDeviceClass.POWER
 
     @property
     def native_value(self):
         return self._setpoint_sensor.calculated_elektrisch_w
+
+
+class SlimmeWarmtepompVoorspeldeBuitenTempSensor(SlimmeWarmtepompBaseSensor):
+    def __init__(self, hass, config_entry, setpoint_sensor):
+        super().__init__(hass, config_entry)
+        self._setpoint_sensor = setpoint_sensor
+        self._attr_name = "Voorspelde Buitentemperatuur Horizon"
+        self._attr_unique_id = f"{self._entry_id}_voorspelde_buiten_temp"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        return round(self._setpoint_sensor.debug_verwacht_buiten, 1)
+
+
+class SlimmeWarmtepompVoorspeldeAfkoelingSensor(SlimmeWarmtepompBaseSensor):
+    def __init__(self, hass, config_entry, setpoint_sensor):
+        super().__init__(hass, config_entry)
+        self._setpoint_sensor = setpoint_sensor
+        self._attr_name = "Voorspelde Huis Afkoeling"
+        self._attr_unique_id = f"{self._entry_id}_voorspelde_afkoeling"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        return round(self._setpoint_sensor.debug_voorspelde_afkoeling, 2)
+
+
+class SlimmeWarmtepompZonReductieSensor(SlimmeWarmtepompBaseSensor):
+    def __init__(self, hass, config_entry, setpoint_sensor):
+        super().__init__(hass, config_entry)
+        self._setpoint_sensor = setpoint_sensor
+        self._attr_name = "Verwachte Zon Reductie"
+        self._attr_unique_id = f"{self._entry_id}_zon_reductie"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        return round(self._setpoint_sensor.debug_zon_reductie, 2)
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -359,10 +433,17 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     thermisch_sensor = SlimmeWarmtepompThermischVermogenSensor(hass, config_entry, setpoint_sensor)
     cop_sensor = SlimmeWarmtepompCopSensor(hass, config_entry, setpoint_sensor)
     elektrisch_sensor = SlimmeWarmtepompElektrischVermogenSensor(hass, config_entry, setpoint_sensor)
+    
+    vbuiten_sensor = SlimmeWarmtepompVoorspeldeBuitenTempSensor(hass, config_entry, setpoint_sensor)
+    vafkoel_sensor = SlimmeWarmtepompVoorspeldeAfkoelingSensor(hass, config_entry, setpoint_sensor)
+    zonreductie_sensor = SlimmeWarmtepompZonReductieSensor(hass, config_entry, setpoint_sensor)
 
     async_add_entities([
         setpoint_sensor,
         thermisch_sensor,
         cop_sensor,
-        elektrisch_sensor
+        elektrisch_sensor,
+        vbuiten_sensor,
+        vafkoel_sensor,
+        zonreductie_sensor
     ])
