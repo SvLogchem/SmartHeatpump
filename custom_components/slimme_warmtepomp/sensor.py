@@ -1,18 +1,27 @@
 """Sensor platform for Slimme Warmtepomp."""
 import logging
 from datetime import timedelta
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.const import UnitOfPower, UnitOfTemperature
 from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-class SlimmeWarmtepompSensor(SensorEntity):
+class SlimmeWarmtepompBaseSensor(SensorEntity):
+    """Gedeelde basisklasse voor de warmtepomp sensoren."""
     def __init__(self, hass, config_entry):
         self.hass = hass
         self._config = config_entry.data
+        self._entry_id = config_entry.entry_id
+
+class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor):
+    """Hoofdsensor: Berekent het ideale water-setpoint."""
+    def __init__(self, hass, config_entry):
+        super().__init__(hass, config_entry)
         self._attr_name = "Ideaal Warmtepomp Setpoint"
-        self._attr_unique_id = f"{config_entry.entry_id}_setpoint"
+        self._attr_unique_id = f"{self._entry_id}_setpoint"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         
         self._room_sensor_id = self._config.get("room_temp_sensor")
         self._outside_sensor_id = self._config.get("outside_temp_sensor")
@@ -22,11 +31,16 @@ class SlimmeWarmtepompSensor(SensorEntity):
         self._is_running = False
         self._state = 22.0
         
+        # Zelflerende variabelen voor afkoeling
         self._learned_cooling_coeff = 0.025
         self._last_room_temp = None
         self._last_update_time = None
         
-        self._attr_extra_state_attributes = {}
+        # Gedeelde data voor de andere sensoren
+        self.calculated_thermisch_kw = 0.0
+        self.calculated_cop = 0.0
+        self.calculated_elektrisch_w = 0.0
+        self.calculated_flow_lh = 0.0
 
     def _get_flow_in_liter_per_hour(self, entity_id):
         if not entity_id:
@@ -64,7 +78,7 @@ class SlimmeWarmtepompSensor(SensorEntity):
         unit = state_obj.attributes.get("unit_of_measurement", "").strip().lower()
         if unit in ["kw", "kilowatt"]:
             return val * 1000.0
-        return val  # Standaard in Watts (W)
+        return val
 
     async def async_update(self):
         now = dt_util.utcnow()
@@ -199,7 +213,7 @@ class SlimmeWarmtepompSensor(SensorEntity):
                 if marge < waakhond_marge:
                     ideal_setpoint = actuele_wp_temp + waakhond_marge
 
-        # --- VOORSPELLENDE PRIJS LOGICA (Kijkt 2 uur vooruit) ---
+        # Prijsvoorspelling logica
         price_sensor_id = self._config.get("electricity_price_sensor")
         huidige_prijs = self._get_float(price_sensor_id, 0.20) if price_sensor_id else 0.20
         toekomstige_prijs = huidige_prijs
@@ -239,7 +253,6 @@ class SlimmeWarmtepompSensor(SensorEntity):
         if actueel_buiten < bivalent_grens:
             _LOGGER.warning(f"Bivalente grens bereikt: {actueel_buiten}°C")
 
-        # --- P1 TERUGLEVERING & PV-BOOST ---
         pv_sensor_id = self._config.get("pv_power_sensor")
         pv_power = self._get_float(pv_sensor_id, 0.0)
         if pv_power > 500:
@@ -248,54 +261,44 @@ class SlimmeWarmtepompSensor(SensorEntity):
         if ideal_setpoint > max_flow_grens:
             ideal_setpoint = max_flow_grens
 
-        # --- VERMOGEN BEREKENEN (Directte sensor OF Volt × Stroom) + COP ---
+        # Berekening voor Flow, Vermogen en COP
         flow_id_1 = self._config.get("flow_rate_sensor_1")
         flow_id_2 = self._config.get("flow_rate_sensor_2")
         power_sensor_id = self._config.get("power_sensor")
         voltage_sensor_id = self._config.get("voltage_sensor")
         current_sensor_id = self._config.get("current_sensor")
         
-        flow_l_h = self._get_flow_in_liter_per_hour(flow_id_1) + self._get_flow_in_liter_per_hour(flow_id_2)
+        self.calculated_flow_lh = self._get_flow_in_liter_per_hour(flow_id_1) + self._get_flow_in_liter_per_hour(flow_id_2)
         
-        # Bepaal elektrisch vermogen in Watts
         power_w = self._get_power_in_watts(power_sensor_id)
         if power_w == 0.0 and voltage_sensor_id and current_sensor_id:
             voltage = self._get_float(voltage_sensor_id, 230.0)
             current = self._get_float(current_sensor_id, 0.0)
             power_w = voltage * current
         
-        p_thermisch_kw = 0.0
-        cop_waarde = 0.0
+        self.calculated_elektrisch_w = round(power_w, 1)
+        self.calculated_thermisch_kw = 0.0
+        self.calculated_cop = 0.0
         
-        if flow_l_h > 0:
+        if self.calculated_flow_lh > 0:
             delta_t = actuele_aanvoer - actuele_retour
             if delta_t > 0:
-                p_thermisch_kw = round((flow_l_h * 4.186 * delta_t) / 3600.0, 2)
-                if power_w > 100:
-                    p_elektrisch_kw = power_w / 1000.0
-                    cop_waarde = round(p_thermisch_kw / p_elektrisch_kw, 2)
-                    if cop_waarde < 1.0 or cop_waarde > 8.0:
-                        cop_waarde = 0.0
+                self.calculated_thermisch_kw = round((self.calculated_flow_lh * 4.186 * delta_t) / 3600.0, 2)
+                if self.calculated_elektrisch_w > 100:
+                    p_elektrisch_kw = self.calculated_elektrisch_w / 1000.0
+                    cop = round(self.calculated_thermisch_kw / p_elektrisch_kw, 2)
+                    if 1.0 <= cop <= 8.0:
+                        self.calculated_cop = cop
 
         self._state = round(ideal_setpoint, 1)
         self._attr_extra_state_attributes = {
-            "thermisch_vermogen_kw": p_thermisch_kw,
-            "cop": cop_waarde,
-            "actuele_aanvoer": actuele_aanvoer,
-            "actuele_retour": actuele_retour,
-            "totaal_flow_l_h": flow_l_h,
-            "elektrisch_vermogen_w": round(power_w, 1),
             "geleerde_afkoel_coefficient": round(self._learned_cooling_coeff, 5),
             "voorspelde_afkoeling_horizon": round(predicted_future_cooling, 2)
         }
 
     @property
-    def state(self):
+    def native_value(self):
         return self._state
-
-    @property
-    def unit_of_measurement(self):
-        return "°C"
 
     def _get_float(self, entity_id, default_value):
         if not entity_id: return default_value
@@ -305,5 +308,60 @@ class SlimmeWarmtepompSensor(SensorEntity):
         except ValueError:
             return default_value
 
+
+class SlimmeWarmtepompThermischVermogenSensor(SlimmeWarmtepompBaseSensor):
+    """Afzonderlijke sensor voor het thermisch vermogen in kW."""
+    def __init__(self, hass, config_entry, setpoint_sensor):
+        super().__init__(hass, config_entry)
+        self._setpoint_sensor = setpoint_sensor
+        self._attr_name = "Warmtepomp Thermisch Vermogen"
+        self._attr_unique_id = f"{self._entry_id}_thermisch_vermogen"
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        return self._setpoint_sensor.calculated_thermisch_kw
+
+
+class SlimmeWarmtepompCopSensor(SlimmeWarmtepompBaseSensor):
+    """Afzonderlijke sensor voor de COP (rendement)."""
+    def __init__(self, hass, config_entry, setpoint_sensor):
+        super().__init__(hass, config_entry)
+        self._setpoint_sensor = setpoint_sensor
+        self._attr_name = "Warmtepomp COP"
+        self._attr_unique_id = f"{self._entry_id}_cop"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        return self._setpoint_sensor.calculated_cop
+
+
+class SlimmeWarmtepompElektrischVermogenSensor(SlimmeWarmtepompBaseSensor):
+    """Afzonderlijke sensor voor het elektrisch vermogen in Watt."""
+    def __init__(self, hass, config_entry, setpoint_sensor):
+        super().__init__(hass, config_entry)
+        self._setpoint_sensor = setpoint_sensor
+        self._attr_name = "Warmtepomp Elektrisch Vermogen"
+        self._attr_unique_id = f"{self._entry_id}_elektrisch_vermogen"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self):
+        return self._setpoint_sensor.calculated_elektrisch_w
+
+
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    async_add_entities([SlimmeWarmtepompSensor(hass, config_entry)])
+    setpoint_sensor = SlimmeWarmtepompSetpointSensor(hass, config_entry)
+    thermisch_sensor = SlimmeWarmtepompThermischVermogenSensor(hass, config_entry, setpoint_sensor)
+    cop_sensor = SlimmeWarmtepompCopSensor(hass, config_entry, setpoint_sensor)
+    elektrisch_sensor = SlimmeWarmtepompElektrischVermogenSensor(hass, config_entry, setpoint_sensor)
+
+    async_add_entities([
+        setpoint_sensor,
+        thermisch_sensor,
+        cop_sensor,
+        elektrisch_sensor
+    ])
