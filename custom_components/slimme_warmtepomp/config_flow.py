@@ -11,21 +11,23 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            return self.async_create_entry(title="Slimme Warmtepomp", data=user_input)
+            # Zet lege optionele velden om naar None zodat validatie slaagt
+            cleaned_input = {k: (v if v != "" else None) for k, v in user_input.items()}
+            return self.async_create_entry(title="Slimme Warmtepomp", data=cleaned_input)
 
         return self.async_show_form(
             step_id="user", data_schema=self._get_schema(), errors=errors
         )
 
     async def async_step_reconfigure(self, user_input=None):
-        """Maakt het mogelijk om de integratie te herconfigureren zonder te verwijderen."""
         errors = {}
         entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
 
         if user_input is not None:
+            cleaned_input = {k: (v if v != "" else None) for k, v in user_input.items()}
             return self.async_update_reload_and_abort(
                 entry,
-                data=user_input,
+                data=cleaned_input,
             )
 
         current_data = {**entry.data, **entry.options}
@@ -109,7 +111,8 @@ class SlimmeWarmtepompOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            cleaned_input = {k: (v if v != "" else None) for k, v in user_input.items()}
+            return self.async_create_entry(title="", data=cleaned_input)
 
         data = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
