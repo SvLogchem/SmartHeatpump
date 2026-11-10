@@ -35,7 +35,15 @@ class SlimmeWarmtepompConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional("flow_rate_sensor_2"): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
+            # Directe vermogenssensor (optioneel)
             vol.Optional("power_sensor"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            # Alternatief: Volt en Stroom
+            vol.Optional("voltage_sensor"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor")
+            ),
+            vol.Optional("current_sensor"): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
             vol.Optional("electricity_price_sensor"): selector.EntitySelector(
