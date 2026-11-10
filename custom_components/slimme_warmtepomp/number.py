@@ -16,7 +16,6 @@ class WarmtepompInstelling(NumberEntity):
         self._attr_native_step = step
         self._attr_native_unit_of_measurement = unit
         
-        # Toon als invulveld in plaats van een schuifregelaar
         self._attr_mode = NumberMode.BOX
         self._attr_entity_category = EntityCategory.CONFIG
 
@@ -36,6 +35,7 @@ class WarmtepompInstelling(NumberEntity):
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     control_mode = config_entry.data.get("control_mode", "retour")
+    price_sensor_configured = bool(config_entry.data.get("electricity_price_sensor"))
     
     if control_mode == "aanvoer":
         basis_naam = "Basis Aanvoertemperatuur"
@@ -56,8 +56,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         WarmtepompInstelling(hass, config_entry, "Nacht Start Uur", "nacht_start", 23.0, 0.0, 23.0, 1.0, "uur"),
         WarmtepompInstelling(hass, config_entry, "Nacht Eind Uur", "nacht_eind", 7.0, 0.0, 23.0, 1.0, "uur"),
         
-        # Prijzen & Slimme Extra's
-        WarmtepompInstelling(hass, config_entry, "Max Stroomprijs voor Verwarmen", "max_stroomprijs", 0.35, 0.05, 1.00, 0.01, "€/kWh"),
+        # Slimme Extra's
         WarmtepompInstelling(hass, config_entry, "Anticipatie Horizon", "horizon", 4.0, 1.0, 12.0, 1.0, "uur"),
         WarmtepompInstelling(hass, config_entry, "Zon Compensatie (Max)", "zon_factor", 2.0, 0.0, 5.0, 0.1, "°C"),
         WarmtepompInstelling(hass, config_entry, "Minimum Run-Time", "minimum_runtime", 15.0, 5.0, 45.0, 1.0, "min"),
@@ -68,4 +67,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         WarmtepompInstelling(hass, config_entry, "PV-Overschot Boost", "pv_boost", 1.0, 0.0, 3.0, 0.1, "°C"),
         WarmtepompInstelling(hass, config_entry, "Bivalente Vorst-waarschuwing", "bivalent_temp", -7.0, -15.0, 0.0, 0.5, "°C"),
     ]
+
+    # Voeg max stroomprijs alleen toe als de prijs-sensor daadwerkelijk is geconfigureerd
+    if price_sensor_configured:
+        entiteiten.append(
+            WarmtepompInstelling(hass, config_entry, "Max Stroomprijs voor Verwarmen", "max_stroomprijs", 0.35, 0.05, 1.00, 0.01, "€/kWh")
+        )
+
     async_add_entities(entiteiten)
