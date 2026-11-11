@@ -1,5 +1,6 @@
 """Binary Sensor platform for Slimme Warmtepomp."""
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.const import EntityCategory
 from .const import DOMAIN
 
 class SlimmeWarmtepompBaseBinarySensor(BinarySensorEntity):
@@ -7,6 +8,7 @@ class SlimmeWarmtepompBaseBinarySensor(BinarySensorEntity):
         self.hass = hass
         self._entry_id = config_entry.entry_id
         self._config_entry = config_entry
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def device_info(self):
