@@ -1,23 +1,41 @@
-"""Number platform for Slimme Warmtepomp."""
-from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.const import EntityCategory
+"""Number platform for Slimme Warmtepomp config parameters."""
+from homeassistant.components.number import RestoreNumber
 from .const import DOMAIN
 
-class WarmtepompInstelling(NumberEntity):
-    def __init__(self, hass, config_entry, name, entity_id_suffix, default_val, min_val, max_val, step, unit):
+CONFIG_NUMBERS = {
+    "slimme_wp_basis_temperatuur": ("Basis Temperatuur", 15, 35, 0.5, 22.0, "°C", "mdi:thermometer"),
+    "slimme_wp_setpoint_offset": ("Setpoint Offset", -5, 5, 0.5, 0.0, "°C", "mdi:thermometer-plus"),
+    "slimme_wp_stooklijn": ("Stooklijn Helling", 0.1, 1.0, 0.1, 0.4, "", "mdi:chart-line"),
+    "slimme_wp_horizon": ("Weersverwachting Horizon", 1, 12, 1, 4.0, "h", "mdi:weather-partly-cloudy"),
+    "slimme_wp_zon_factor": ("Zon Compensatie Factor", 0.0, 5.0, 0.1, 2.0, "", "mdi:white-balance-sunny"),
+    "slimme_wp_minimum_runtime": ("Minimale Draaitijd", 0, 60, 5, 15.0, "min", "mdi:timer"),
+    "slimme_wp_waakhond_marge": ("Waakhond Marge", 0.1, 2.0, 0.1, 0.5, "°C", "mdi:shield-check"),
+    "slimme_wp_setpoint_dag": ("Ruimte Setpoint Dag", 15, 25, 0.1, 21.0, "°C", "mdi:sun-compass"),
+    "slimme_wp_setpoint_nacht": ("Ruimte Setpoint Nacht", 15, 25, 0.1, 20.4, "°C", "mdi:weather-night"),
+    "slimme_wp_dag_start": ("Starttijd Dag", 0, 23, 1, 9.0, "h", "mdi:clock-start"),
+    "slimme_wp_dag_eind": ("Eindtijd Dag", 0, 23, 1, 21.0, "h", "mdi:clock-end"),
+    "slimme_wp_nacht_start": ("Starttijd Nacht", 0, 23, 1, 23.0, "h", "mdi:clock-start"),
+    "slimme_wp_nacht_eind": ("Eindtijd Nacht", 0, 23, 1, 7.0, "h", "mdi:clock-end"),
+    "slimme_wp_max_stroomprijs": ("Max Stroomprijs", 0.0, 1.0, 0.01, 0.35, "€/kWh", "mdi:cash"),
+    "slimme_wp_max_flow_temp": ("Max Aanvoertemperatuur", 20, 60, 1, 40.0, "°C", "mdi:thermometer-high"),
+    "slimme_wp_pv_boost": ("Zonnepanelen Boost", 0.0, 5.0, 0.5, 1.0, "°C", "mdi:solar-power"),
+    "slimme_wp_bivalent_temp": ("Bivalente Temperatuur", -20, 10, 1, -7.0, "°C", "mdi:snowflake"),
+    "slimme_wp_stookgrens": ("Zomermodus Stookgrens", 10, 25, 0.5, 18.0, "°C", "mdi:sun-thermometer"),
+}
+
+class SlimmeWarmtepompConfigNumber(RestoreNumber):
+    def __init__(self, hass, config_entry, key, name, min_v, max_v, step, default, unit, icon):
         self.hass = hass
         self._config_entry = config_entry
-        self._attr_name = name
-        self.entity_id = f"number.slimme_wp_{entity_id_suffix}"
-        self._attr_unique_id = f"{config_entry.entry_id}_{entity_id_suffix}"
-        self._attr_native_value = default_val
-        self._attr_native_min_value = min_val
-        self._attr_native_max_value = max_val
+        self._attr_name = f"Slimme WP {name}"
+        self.entity_id = f"number.{key}"
+        self._attr_unique_id = f"{config_entry.entry_id}_{key}"
+        self._attr_native_min_value = min_v
+        self._attr_native_max_value = max_v
         self._attr_native_step = step
-        self._attr_native_unit_of_measurement = unit
-        
-        self._attr_mode = NumberMode.BOX
-        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_native_value = default
+        if unit: self._attr_native_unit_of_measurement = unit
+        if icon: self._attr_icon = icon
 
     @property
     def device_info(self):
@@ -25,55 +43,20 @@ class WarmtepompInstelling(NumberEntity):
             "identifiers": {(DOMAIN, self._config_entry.entry_id)},
             "name": "Slimme Warmtepomp",
             "manufacturer": "Custom HEMS",
-            "model": "Zelflerende Regeling",
-            "sw_version": "1.0.0",
         }
 
-    async def async_set_native_value(self, value: float) -> None:
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_number_data()
+        if last_state is not None and last_state.native_value is not None:
+            self._attr_native_value = last_state.native_value
+
+    async def async_set_native_value(self, value: float):
         self._attr_native_value = value
         self.async_write_ha_state()
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    control_mode = config_entry.data.get("control_mode", "retour")
-    price_sensor_configured = bool(config_entry.data.get("electricity_price_sensor"))
-    
-    if control_mode == "aanvoer":
-        basis_naam = "Stooklijn: Basis Aanvoertemperatuur"
-        basis_default = 28.0
-    else:
-        basis_naam = "Stooklijn: Basis Retourtemperatuur"
-        basis_default = 22.0
-
-    entiteiten = [
-        # --- BLOK 1: ANTICIPATIE & SLIMME EXTRA'S ---
-        WarmtepompInstelling(hass, config_entry, "Anticipatie: Horizon", "horizon", 4.0, 1.0, 12.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Anticipatie: Minimum Run-Time", "minimum_runtime", 15.0, 5.0, 45.0, 1.0, "min"),
-        WarmtepompInstelling(hass, config_entry, "Anticipatie: Waakhond Marge", "waakhond_marge", 0.5, 0.1, 2.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Anticipatie: Zon Compensatie (Max)", "zon_factor", 2.0, 0.0, 5.0, 0.1, "°C"),
-        
-        # --- BLOK 2: KLOKPROGRAMMA & DAG/NACHT SETPOINTS ---
-        WarmtepompInstelling(hass, config_entry, "Klok: Dag Eind Uur", "dag_eind", 21.0, 0.0, 23.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Klok: Dag Start Uur", "dag_start", 9.0, 0.0, 23.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Klok: Gewenste Temp Dag", "setpoint_dag", 21.0, 15.0, 25.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Klok: Gewenste Temp Nacht", "setpoint_nacht", 20.4, 15.0, 25.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Klok: Nacht Eind Uur", "nacht_eind", 7.0, 0.0, 23.0, 1.0, "uur"),
-        WarmtepompInstelling(hass, config_entry, "Klok: Nacht Start Uur", "nacht_start", 23.0, 0.0, 23.0, 1.0, "uur"),
-        
-        # --- BLOK 3: STOOKLIJN & BASIS ---
-        WarmtepompInstelling(hass, config_entry, basis_naam, "basis_temperatuur", basis_default, 15.0, 45.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Stooklijn: Handmatige Offset", "setpoint_offset", 0.0, -5.0, 5.0, 0.1, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Stooklijn: Helling", "stooklijn", 0.4, 0.1, 1.5, 0.05, ""),
-        
-        # --- BLOK 4: VEILIGHEID & PRO ---
-        WarmtepompInstelling(hass, config_entry, "Veiligheid: Bivalente Vorst-waarschuwing", "bivalent_temp", -7.0, -15.0, 0.0, 0.5, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Veiligheid: Maximale Aanvoer/Vloer Temp", "max_flow_temp", 40.0, 30.0, 55.0, 0.5, "°C"),
-        WarmtepompInstelling(hass, config_entry, "Veiligheid: PV-Overschot Boost", "pv_boost", 1.0, 0.0, 3.0, 0.1, "°C"),
-    ]
-
-    # Voeg max stroomprijs alleen toe indien geconfigureerd
-    if price_sensor_configured:
-        entiteiten.append(
-            WarmtepompInstelling(hass, config_entry, "Veiligheid: Max Stroomprijs voor Verwarmen", "max_stroomprijs", 0.35, 0.05, 1.00, 0.01, "€/kWh")
-        )
-
-    async_add_entities(entiteiten)
+    entities = []
+    for key, (name, min_v, max_v, step, default, unit, icon) in CONFIG_NUMBERS.items():
+        entities.append(SlimmeWarmtepompConfigNumber(hass, config_entry, key, name, min_v, max_v, step, default, unit, icon))
+    async_add_entities(entities)
