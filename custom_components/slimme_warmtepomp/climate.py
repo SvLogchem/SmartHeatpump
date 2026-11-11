@@ -21,7 +21,6 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self.hass = hass
         self._config_entry = config_entry
         self._attr_name = "Slimme Warmtepomp Thermostaat"
-        # Vastgezette entity_id zodat we er veilig naar kunnen zoeken
         self.entity_id = "climate.slimme_warmtepomp_thermostaat" 
         self._attr_unique_id = f"{config_entry.entry_id}_climate"
         
@@ -31,7 +30,6 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         
         self._attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
         self._attr_preset_modes = [PRESET_DAY, PRESET_NIGHT, PRESET_MANUAL]
-        # Zet zowel temperatuur- als preset-bediening aan!
         self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         
@@ -45,7 +43,6 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self._attr_preset_mode = PRESET_DAY
 
     async def async_added_to_hass(self):
-        """Herstel status na herstart."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state is not None:
@@ -82,14 +79,12 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         return HVACAction.HEATING
 
     async def async_set_temperature(self, **kwargs):
-        """Als de slider wordt bewogen, forceer handmatige modus!"""
         if ATTR_TEMPERATURE in kwargs:
             self._attr_target_temperature = kwargs[ATTR_TEMPERATURE]
             self._attr_preset_mode = PRESET_MANUAL
             self.async_write_ha_state()
 
     async def async_set_preset_mode(self, preset_mode: str):
-        """Verwerk een klik op een Preset."""
         self._attr_preset_mode = preset_mode
         if preset_mode == PRESET_DAY:
             state = self.hass.states.get("number.slimme_wp_setpoint_dag")
@@ -119,14 +114,12 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
             if state:
                 self._attr_hvac_mode = HVACMode.HEAT if state.state == "on" else HVACMode.OFF
         
-        # Laat de thermostaat het actieve programma volgen (tenzij hij handmatig overschreven is)
         if self._attr_preset_mode != PRESET_MANUAL:
             sensor_state = self.hass.states.get("sensor.slimme_wp_setpoint")
             if sensor_state and "actief_programma" in sensor_state.attributes:
                 auto_prog = sensor_state.attributes["actief_programma"]
                 if auto_prog in [PRESET_DAY, PRESET_NIGHT]:
                     self._attr_preset_mode = auto_prog
-                    # Update slider waarde dynamisch
                     if auto_prog == PRESET_DAY:
                         dag_s = self.hass.states.get("number.slimme_wp_setpoint_dag")
                         if dag_s: self._attr_target_temperature = float(dag_s.state)
