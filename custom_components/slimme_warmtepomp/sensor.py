@@ -265,6 +265,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor, RestoreEntity):
 
         self._state = round(ideal_setpoint, 1)
 
+        # Als er een externe entiteit is ingevuld, stuur hem daarheen. Anders werkt de sensor zelf als virtuele output!
         if self._target_setpoint_entity:
             try:
                 await self.hass.services.async_call("number", "set_value", {"entity_id": self._target_setpoint_entity, "value": self._state}, blocking=False)
