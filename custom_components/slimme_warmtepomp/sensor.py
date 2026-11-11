@@ -95,8 +95,10 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor, RestoreEntity):
         try: val = float(state.state)
         except ValueError: return 0.0
         unit = state.attributes.get("unit_of_measurement", "").strip().lower()
-        if unit in ["kw", "kilowatt"]: return val * 1000.0
-        return val
+        # Flexibele eenheid-herkenning voor vermogen
+        if unit in ["kw", "kilowatt"]:
+            return val * 1000.0
+        return val  # Standaard in Watt (W)
 
     async def async_update(self):
         now = dt_util.utcnow()
@@ -250,22 +252,35 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor, RestoreEntity):
 
         if ideal_setpoint > max_flow_grens: ideal_setpoint = max_flow_grens
 
+        # --- BEREKENING VERMOGEN & COP ---
         flow_lh = self._get_flow_in_liter_per_hour(self._config.get("flow_rate_sensor_1")) + self._get_flow_in_liter_per_hour(self._config.get("flow_rate_sensor_2"))
+        
+        # 1. Probeer directe vermogenssensor
         power_w = self._get_power_in_watts(self._config.get("power_sensor"))
         
+        # 2. Als direct vermogen 0 is, probeer spanning x stroom
+        if power_w == 0.0:
+            voltage_id = self._config.get("voltage_sensor")
+            current_id = self._config.get("current_sensor")
+            if voltage_id and current_id:
+                volt = self._get_float(voltage_id, 230.0)
+                curr = self._get_float(current_id, 0.0)
+                power_w = volt * curr
+
         self.calculated_elektrisch_w = round(power_w, 1)
         self.calculated_thermisch_kw = 0.0
         self.calculated_cop = 0.0
         
         if flow_lh > 0 and delta_t_check > 0:
             self.calculated_thermisch_kw = round((flow_lh * 4.186 * delta_t_check) / 3600.0, 2)
-            if self.calculated_elektrisch_w > 100:
+            # Bereken COP als elektrisch vermogen groter is dan 10W (om deling door 0 te voorkomen)
+            if self.calculated_elektrisch_w > 10.0:
                 cop = round(self.calculated_thermisch_kw / (self.calculated_elektrisch_w / 1000.0), 2)
-                if 1.0 <= cop <= 8.0: self.calculated_cop = cop
+                if 0.5 <= cop <= 12.0: 
+                    self.calculated_cop = cop
 
         self._state = round(ideal_setpoint, 1)
 
-        # Als er een externe entiteit is ingevuld, stuur hem daarheen. Anders werkt de sensor zelf als virtuele output!
         if self._target_setpoint_entity:
             try:
                 await self.hass.services.async_call("number", "set_value", {"entity_id": self._target_setpoint_entity, "value": self._state}, blocking=False)
