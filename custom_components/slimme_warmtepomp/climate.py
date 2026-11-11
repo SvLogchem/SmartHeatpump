@@ -39,7 +39,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self._attr_max_temp = 25.0
         
         self._attr_target_temperature = 21.0
-        self._attr_hvac_mode = HVACMode.OFF
+        self._attr_hvac_mode = HVACMode.HEAT  # Standaard aan voor simulatie
         self._attr_preset_mode = PRESET_DAY
 
     async def async_added_to_hass(self):
@@ -62,7 +62,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
     def extra_state_attributes(self): return {"target_temp_step": 0.1, "precision": 0.1}
     @property
     def device_info(self):
-        return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
+        return {"identifiers": {(DOMAIN, self._entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
 
     @property
     def current_temperature(self):
