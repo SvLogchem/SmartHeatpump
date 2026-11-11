@@ -21,7 +21,6 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self.hass = hass
         self._config_entry = config_entry
         self._attr_name = "Slimme Warmtepomp Thermostaat"
-        self.entity_id = "climate.slimme_warmtepomp_thermostaat" 
         self._attr_unique_id = f"{config_entry.entry_id}_climate"
         
         config = {**config_entry.data, **config_entry.options}
@@ -39,7 +38,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self._attr_max_temp = 25.0
         
         self._attr_target_temperature = 21.0
-        self._attr_hvac_mode = HVACMode.HEAT  # Standaard aan voor simulatie
+        self._attr_hvac_mode = HVACMode.HEAT
         self._attr_preset_mode = PRESET_DAY
 
     async def async_added_to_hass(self):
@@ -56,16 +55,21 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
 
     @property
     def precision(self) -> float: return 0.1
+    
     @property
     def target_temp_step(self) -> float: return 0.1
-    @property
-    def extra_state_attributes(self): return {"target_temp_step": 0.1, "precision": 0.1}
-    @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
 
     @property
-    def current_temperature(self):
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
+            "name": "Slimme Warmtepomp",
+            "manufacturer": "Custom HEMS",
+        }
+
+    @property
+    def native_current_temperature(self):
+        """Moderne vervanger voor current_temperature."""
         if not self._room_sensor: return None
         state = self.hass.states.get(self._room_sensor)
         if state and state.state not in ['unknown', 'unavailable']:
