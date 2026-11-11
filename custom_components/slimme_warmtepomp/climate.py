@@ -29,7 +29,6 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
         
         self._attr_precision = 0.1
         self._attr_target_temp_step = 0.1
-        
         self._attr_min_temp = 15.0
         self._attr_max_temp = 25.0
         
@@ -67,10 +66,8 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
             return None
         state = self.hass.states.get(self._room_sensor)
         if state and state.state not in ['unknown', 'unavailable']:
-            try:
-                return float(state.state)
-            except ValueError:
-                return None
+            try: return float(state.state)
+            except ValueError: return None
         return None
 
     @property
@@ -87,9 +84,15 @@ class SlimmeWarmtepompThermostaat(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         if self._tuya_switch and not self._tuya_switch.startswith("virtual_"):
             if hvac_mode == HVACMode.HEAT:
-                await self.hass.services.async_call("switch", "turn_on", {"entity_id": self._tuya_switch})
+                await self.hass.services.async_call(
+                    "input_boolean" if self._tuya_switch.startswith("input_boolean") else "switch", 
+                    "turn_on", {"entity_id": self._tuya_switch}
+                )
             elif hvac_mode == HVACMode.OFF:
-                await self.hass.services.async_call("switch", "turn_off", {"entity_id": self._tuya_switch})
+                await self.hass.services.async_call(
+                    "input_boolean" if self._tuya_switch.startswith("input_boolean") else "switch", 
+                    "turn_off", {"entity_id": self._tuya_switch}
+                )
             
         self._attr_hvac_mode = hvac_mode
         self.async_write_ha_state()
