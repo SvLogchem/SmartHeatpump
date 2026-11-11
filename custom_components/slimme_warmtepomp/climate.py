@@ -33,7 +33,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         
         self._attr_precision = 0.1
-        self._attr_target_temp_step = 0.1
+        self._attr_target_temperature_step = 0.1  # Gecorrigeerde Home Assistant variabele!
         self._attr_min_temp = 15.0
         self._attr_max_temp = 25.0
         
@@ -57,7 +57,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
     def precision(self) -> float: return 0.1
     
     @property
-    def target_temp_step(self) -> float: return 0.1
+    def target_temperature_step(self) -> float: return 0.1  # Gecorrigeerde variabele!
 
     @property
     def device_info(self):
@@ -69,7 +69,6 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
 
     @property
     def native_current_temperature(self):
-        """Moderne vervanger voor current_temperature."""
         if not self._room_sensor: return None
         state = self.hass.states.get(self._room_sensor)
         if state and state.state not in ['unknown', 'unavailable']:
