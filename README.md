@@ -51,7 +51,7 @@ De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert 
 - De grens verhoogt of verlaagt de instelling in de pomp zelf niet. Staat daar een harde grens (bijvoorbeeld 50 Hz), dan leert de integratie ook niets boven die frequentie. Verhoog hem in het bedienpaneel stapsgewijs.
 - De grens beperkt alleen het extra opwarmen: het setpoint dat het huismodel nodig heeft om de temperatuur vast te houden blijft behouden. Bij nood (kamer ruim onder setpoint of onder het minimum) wordt de grens genegeerd.
 - Zolang er te weinig gegevens zijn, doet de grens niets. De planner houdt rekening met de grens bij het kiezen van het voorverwarmmoment.
-- Zichtbaar via `binary_sensor.slimme_wp_frequentiegrens_actief`.
+- Zichtbaar via `binary_sensor.slimme_wp_freq_begrensd`.
 
 ## Entiteiten
 
