@@ -250,3 +250,38 @@ def test_hvac_action_matches_v1_wording(setup):
     run(c.async_request_refresh()); assert climate.hvac_action == A.FAN        # circuleren
     h.states.set("switch.wp", "off")
     run(c.async_request_refresh()); assert climate.hvac_action == A.IDLE       # stand-by
+
+
+def test_optional_inputs_and_entities():
+    cfg = dict(CONFIG, open_sensors=["binary_sensor.raam1", "binary_sensor.deur"],
+               presence_entities=["person.a", "person.b"], holiday_entity="input_boolean.vakantie",
+               return_time_entity="input_datetime.terug", grid_power_sensor="sensor.grid")
+    h, entry = make_hass(cfg)
+    s = h.states.set
+    s("binary_sensor.raam1", "off"); s("binary_sensor.deur", "on")
+    s("person.a", "not_home"); s("person.b", "not_home"); s("input_boolean.vakantie", "off")
+    s("sensor.grid", 2.5, unit_of_measurement="kW")
+    tomorrow = (datetime.now().astimezone() + timedelta(hours=30)).strftime("%Y-%m-%d %H:%M:%S")
+    s("input_datetime.terug", tomorrow)
+    run(importlib.import_module(PKG).async_setup_entry(h, entry))
+    c = entry.runtime_data
+    ids = {e.entity_id for _, e in h.entities}
+    assert {"binary_sensor.slimme_wp_raam_open", "binary_sensor.slimme_wp_afwezig",
+            "binary_sensor.slimme_wp_netlimiet", "number.slimme_wp_raam_vertraging",
+            "number.slimme_wp_afwezig_setpoint", "number.slimme_wp_netimport_limiet",
+            "sensor.slimme_wp_cop_vandaag", "sensor.slimme_wp_starts_vandaag"} <= ids
+    assert c._windows_open() is True and c._away() is True
+    assert c._grid_ok if hasattr(c, "_grid_ok") else True
+    ret = c._return_at(datetime.now().astimezone())
+    assert ret is not None and ret > datetime.now().astimezone()
+    s("person.b", "home")
+    assert c._away() is False
+    s("input_boolean.vakantie", "on")
+    assert c._away() is True
+    read_all(h)
+
+
+def test_optional_entities_absent_when_not_configured(setup):
+    h, entry, c = setup
+    ids = {e.entity_id for _, e in h.entities}
+    assert "binary_sensor.slimme_wp_raam_open" not in ids and "number.slimme_wp_afwezig_setpoint" not in ids

@@ -51,5 +51,5 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(
         SlimmeWarmtepompNumber(coordinator, key, name, lo, hi, step, unit, default)
         for key, name, lo, hi, step, unit, default, group in NUMBER_SPECS
-        if group == "core" or coordinator.has_dhw
+        if coordinator.group_enabled(group)
     )

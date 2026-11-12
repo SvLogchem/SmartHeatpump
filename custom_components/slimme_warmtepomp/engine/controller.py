@@ -56,6 +56,10 @@ class Inputs:
     preheat_enabled: bool = True
     price_enabled: bool = True
     dhw_enabled: bool = False
+    windows_open: bool = False            # any configured window/door sensor reports open
+    away: bool = False                    # nobody home (raw; the controller debounces it)
+    return_at: datetime | None = None     # announced time of return, if known
+    grid_import_w: float | None = None    # power drawn from the grid (positive = import)
     preset: str = PROGRAM_DAY
     manual_temp: float = 21.0
     switch_state: str | None = None   # "on" / "off" / None (no switch configured)
@@ -84,6 +88,13 @@ class Decision:
     bivalent: bool = False
     dhw_active: bool = False
     heating: bool = False
+    window_open: bool = False
+    away: bool = False
+    grid_limited: bool = False
+    cop_today: float | None = None
+    cop_yesterday: float | None = None
+    starts_today: int = 0
+    starts_yesterday: int | None = None
     shadow: bool = False               # computed, but nothing is sent to the heat pump
     switch_state: str | None = None    # observed state of the heat pump switch
     thermal_kw: float = 0.0
@@ -164,6 +175,9 @@ class SmartController:
         self.dT_sup = 3.5
         self.energy_th = 0.0
         self.energy_el = 0.0
+        self.day_key: str | None = None
+        self.today = {"th": 0.0, "el": 0.0, "starts": 0}
+        self.yesterday: dict | None = None
         self._reset_runtime()
 
     def _reset_runtime(self) -> None:
@@ -183,6 +197,13 @@ class SmartController:
         self._last: Decision | None = None
         self._q_acc = 0.0
         self._q_last: datetime | None = None
+        self._open_since: datetime | None = None
+        self._away_since: datetime | None = None
+        self._grid_hi_since: datetime | None = None
+        self._grid_block_since: datetime | None = None
+        self._grid_lock_until: datetime | None = None
+        self._was_heating: bool | None = None
+        self._stopped_at: datetime | None = None
 
     def reset_model(self) -> None:
         self.model.reset()
@@ -197,6 +218,7 @@ class SmartController:
             "prices": self.prices.to_dict(), "dhw": self.dhw.to_dict(),
             "pi_i": self.pi_i, "summer_mean": self.summer_mean, "summer": self.summer,
             "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
+            "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
         }
 
     def import_state(self, d: dict) -> None:
@@ -213,6 +235,11 @@ class SmartController:
             self.dT_sup = float(d.get("dT_sup", 3.5))
             self.energy_th = float(d.get("energy_th", 0.0))
             self.energy_el = float(d.get("energy_el", 0.0))
+            self.day_key = d.get("day_key")
+            t = d.get("today") or {}
+            self.today = {"th": float(t.get("th", 0.0)), "el": float(t.get("el", 0.0)), "starts": int(t.get("starts", 0))}
+            y = d.get("yesterday")
+            self.yesterday = None if not y else {"th": float(y["th"]), "el": float(y["el"]), "starts": int(y["starts"])}
         except (TypeError, ValueError, AttributeError, KeyError):
             # corrupted storage must never stop the integration from starting
             self.model.reset()
@@ -319,10 +346,25 @@ class SmartController:
             self._manual_prog = None
         manual_active = inp.preset == PROGRAM_MANUAL and not d.revert_manual
 
+        # ---- away (debounced) and open windows
+        if inp.away:
+            self._away_since = self._away_since or now
+        else:
+            self._away_since = None
+        away_active = bool(self._away_since and now - self._away_since >= timedelta(minutes=s["afwezig_vertraging"]))
+        if inp.windows_open:
+            self._open_since = self._open_since or now
+        else:
+            self._open_since = None
+        window_active = bool(self._open_since and now - self._open_since >= timedelta(minutes=s["raam_vertraging"]))
+        d.away, d.window_open = away_active, window_active
+
         def sp_at(t: datetime) -> float:
             prog = self._program(t, s)
             if manual_active and prog == self._manual_prog:
                 return inp.manual_temp
+            if away_active and not manual_active and (inp.return_at is None or t < inp.return_at):
+                return s["afwezig_setpoint"]
             return s["setpoint_nacht"] if prog == PROGRAM_NIGHT else s["setpoint_dag"]
 
         sp_now = sp_at(now)
@@ -354,6 +396,25 @@ class SmartController:
         self.energy_th += d.thermal_kw * e_dt
         self.energy_el += power_w / 1000.0 * e_dt
         d.energy_thermal_kwh, d.energy_electric_kwh = round(self.energy_th, 3), round(self.energy_el, 3)
+
+        # ---- daily statistics: COP and compressor starts per day
+        key = now.date().isoformat()
+        if key != self.day_key:
+            if self.day_key is not None:
+                self.yesterday = self.today
+            self.day_key, self.today = key, {"th": 0.0, "el": 0.0, "starts": 0}
+        self.today["th"] += d.thermal_kw * e_dt
+        self.today["el"] += power_w / 1000.0 * e_dt
+        if self._was_heating and not heating:
+            self._stopped_at = now
+        if heating and self._was_heating is False and (
+                self._stopped_at is None or now - self._stopped_at >= timedelta(minutes=2)):
+            self.today["starts"] += 1
+        self._was_heating = heating
+        d.starts_today = self.today["starts"]
+        d.cop_today = _day_cop(self.today)
+        if self.yesterday:
+            d.cop_yesterday, d.starts_yesterday = _day_cop(self.yesterday), self.yesterday["starts"]
 
         # ---- prices
         price_enabled = inp.price_enabled and s["prijs_gevoeligheid"] > 0
@@ -392,7 +453,7 @@ class SmartController:
 
         # ---- learning
         if inp.learning_enabled:
-            valid = proxy_ok and inp.hvac_on and not d.defrost and not dhw_busy
+            valid = proxy_ok and inp.hvac_on and not d.defrost and not dhw_busy and not inp.windows_open
             self._learn(inp, valid, heating, f_meas, sun_now)
 
         # ---- summer mode (24h mean with hysteresis)
@@ -409,7 +470,8 @@ class SmartController:
         d.dhw_request, d.dhw_setpoint, d.dhw_active = dhw.request, dhw.setpoint, dhw.active
 
         # ---- evening learning (bias for the floor target at bedtime)
-        self.tracker.update(now, tr, sp_now, s["bedtijd"])
+        if not away_active:
+            self.tracker.update(now, tr, sp_now, s["bedtijd"])
 
         d.diag = self._diag(s, f_known, sun_now)
         mode = inp.control_mode
@@ -507,8 +569,10 @@ class SmartController:
         in_quiet = quiet_fn(now)
         emergency = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - 0.3
         over = tr > sp_now + s["tolerantie_hoog"]
+        grid_block = self._grid_limiter(inp, s, now)
+        d.grid_limited = grid_block
         cap_coast = d.expensive and not emergency and tr >= sp_now - s["tolerantie_laag"]
-        want_coast = (self.summer or over or cap_coast or pl.coast_now) and not emergency
+        want_coast = (self.summer or over or cap_coast or pl.coast_now or window_active or grid_block) and not emergency
         want = "coast" if want_coast else "run"
         if self._heat_state is None:
             self._heat_state, self._heat_since = want, now
@@ -521,7 +585,8 @@ class SmartController:
         # ---- setpoint
         if d.coasting:
             raw = (x_meas - 1.0) if x_meas is not None else S_MIN
-            d.reason = ("zomermodus" if self.summer else "dure_stroom" if cap_coast
+            d.reason = ("zomermodus" if self.summer else "raam_open" if window_active
+                        else "netlimiet" if grid_block else "dure_stroom" if cap_coast
                         else "te_warm" if over else "uitlopen" if pl.coast_now else "wacht_draaitijd")
         else:
             e = sp_now - tr
@@ -578,13 +643,54 @@ class SmartController:
             "vloer_geschat": _r(self.f_est),
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
+            "geleerde_stooklijn": self._learned_curve(s),
         }
+
+    def _learned_curve(self, s: dict):
+        """Setpoint the model would use at a few outdoor temperatures (sp=day, no sun)."""
+        if self.model.confidence() < 0.5 or not self.model.plausible():
+            return None
+        out = {}
+        for to in (-5, 0, 5, 10, 15):
+            out[str(to)] = round(self.model.floor_equilibrium(s["setpoint_dag"], to, 0.0), 1)
+        return out
+
+    def _grid_limiter(self, inp: Inputs, s: dict, now: datetime) -> bool:
+        """Back off when the house draws too much from the grid (capacity tariff, battery saver).
+
+        Needs the limit to be exceeded for 5 minutes (ignores cooking spikes), blocks for at
+        most 45 minutes and then stays released for 15 minutes so comfort cannot suffer.
+        """
+        limit, imp = s["netimport_limiet"], inp.grid_import_w
+        if limit <= 0 or imp is None:
+            self._grid_hi_since = self._grid_block_since = None
+            return False
+        if self._grid_block_since is not None:
+            if imp < 0.8 * limit:
+                self._grid_block_since = None
+            elif now - self._grid_block_since >= timedelta(minutes=45):
+                self._grid_block_since = None
+                self._grid_lock_until = now + timedelta(minutes=15)
+            return self._grid_block_since is not None
+        if imp > limit:
+            self._grid_hi_since = self._grid_hi_since or now
+            if now - self._grid_hi_since >= timedelta(minutes=5) and (
+                    self._grid_lock_until is None or now >= self._grid_lock_until):
+                self._grid_block_since = now
+                return True
+        else:
+            self._grid_hi_since = None
+        return False
 
     def _finish(self, d: Decision, now: datetime) -> None:
         if d.shadow:  # "schaduwmodus": everything is calculated and visible, nothing is sent
             d.switch = None
             d.dhw_request = None
         self._last = d
+
+
+def _day_cop(day: dict):
+    return round(day["th"] / day["el"], 2) if day["el"] > 0.5 else None
 
 
 def _r(v, n=2):

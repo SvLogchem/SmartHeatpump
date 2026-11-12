@@ -97,10 +97,23 @@ def install():
             Store.saved[self.key] = data
 
     TZ = ZoneInfo("Europe/Amsterdam")
+
+    def _pdt(s):
+        try:
+            return datetime.fromisoformat(s)
+        except (TypeError, ValueError):
+            return None
+
+    def _pt(s):
+        try:
+            return datetime.strptime(s, "%H:%M:%S").time()
+        except (TypeError, ValueError):
+            return None
+
     mod("homeassistant.util.dt",
         now=lambda: datetime.now(TZ), utcnow=lambda: datetime.now(timezone.utc),
         as_local=lambda d: d.astimezone(TZ),
-        parse_datetime=lambda s: datetime.fromisoformat(s) if s else None)
+        parse_datetime=_pdt, parse_time=_pt)
     mod("homeassistant.exceptions", HomeAssistantError=HomeAssistantError)
     mod("homeassistant.core", State=Dummy, HomeAssistant=Dummy, ServiceCall=Dummy)
     mod("homeassistant.config_entries", ConfigEntry=Dummy, ConfigFlow=Dummy, ConfigFlowResult=dict)
@@ -145,7 +158,7 @@ def install():
         SensorDeviceClass=StrEnum("SDC", {"TEMPERATURE": "t", "POWER": "p", "ENERGY": "e"}),
         SensorStateClass=StrEnum("SSC", {"MEASUREMENT": "m", "TOTAL_INCREASING": "ti"}))
     mod("homeassistant.components.binary_sensor", BinarySensorEntity=D('SensorEntity'),
-        BinarySensorDeviceClass=StrEnum("BDC", {"HEAT": "h", "PROBLEM": "p"}))
+        BinarySensorDeviceClass=StrEnum("BDC", {"HEAT": "h", "PROBLEM": "p", "WINDOW": "w"}))
     if "voluptuous" not in sys.modules:
         try:
             import voluptuous  # noqa: F401
