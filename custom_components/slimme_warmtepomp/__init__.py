@@ -2,36 +2,21 @@
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORMS: list[str] = ["sensor", "number", "binary_sensor", "climate"]
-
+PLATFORMS = ["sensor", "number", "binary_sensor", "climate", "switch"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Zet de integratie op vanuit de UI."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {**entry.data, **entry.options}
-
+    """Set up Slimme Warmtepomp from a config entry."""
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
-    # Zorg dat de integratie automatisch herlaadt als instellingen wijzigen
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    entry.async_on_unload(entry.add_update_listener(update_listener))
     return True
 
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Herlaad de integratie wanneer opties of configuratie wijzigen."""
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload integration when options are updated."""
     await hass.config_entries.async_reload(entry.entry_id)
 
-
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Verwijder de integratie."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
+    """Unload a config entry."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
