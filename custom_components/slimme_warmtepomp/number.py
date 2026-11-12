@@ -1,5 +1,5 @@
 """Number platform for Slimme Warmtepomp."""
-from homeassistant.components.number import NumberEntity
+from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.const import EntityCategory
 from .const import DOMAIN
@@ -37,6 +37,7 @@ class SlimmeWarmtepompNumber(NumberEntity, RestoreEntity):
         self._attr_native_step = step
         self._attr_native_unit_of_measurement = unit if unit else None
         self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_mode = NumberMode.BOX  # <-- Forceert een strak invulvak in plaats van een schuifje
         self._attr_native_value = min_val
 
     @property
