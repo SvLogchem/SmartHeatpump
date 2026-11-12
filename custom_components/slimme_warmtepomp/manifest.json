@@ -1,12 +1,19 @@
 {
   "domain": "slimme_warmtepomp",
   "name": "Slimme Warmtepomp",
-  "documentation": "https://github.com/SvLogchem/SmartHeatpump",
-  "issue_tracker": "https://github.com/SvLogchem/SmartHeatpump/issues",
-  "dependencies": [],
-  "codeowners": ["@SvLogchem"],
-  "requirements": [],
+  "after_dependencies": [
+    "weather"
+  ],
+  "codeowners": [
+    "@SvLogchem"
+  ],
   "config_flow": true,
-  "version": "1.0.1",
-  "iot_class": "calculated"
+  "dependencies": [],
+  "documentation": "https://github.com/SvLogchem/SmartHeatpump",
+  "integration_type": "device",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/SvLogchem/SmartHeatpump/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "2.0.0"
 }

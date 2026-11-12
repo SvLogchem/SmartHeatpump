@@ -3,59 +3,130 @@
     "title": "Smart Heat Pump",
     "step": {
       "user": {
-        "title": "Smart Heat Pump Configuration",
-        "description": "Link your physical heat pump entities and sensors to the self-learning controller.",
+        "title": "Smart Heat Pump configuration",
+        "description": "Link the sensors and controls of your heat pump. Only room and outdoor temperature are required; the more sensors, the smarter the control.",
         "data": {
-          "room_temp_sensor": "Room Temperature Sensor",
-          "outside_temp_sensor": "Outside Temperature Sensor",
-          "weather_entity": "Weather Forecast Entity",
-          "heatpump_switch": "Heat Pump On/Off Switch",
-          "target_setpoint_entity": "Heat Pump Target Setpoint Entity",
-          "control_mode": "Control Mode (retour or aanvoer)",
-          "compressor_freq_sensor": "Compressor Frequency Sensor (optional)",
-          "return_temp_sensor": "Return Water Temp Sensor (optional)",
-          "flow_temp_sensor": "Flow Water Temp Sensor (optional)",
-          "flow_rate_sensor_1": "Water Flow Rate Sensor 1 (optional)",
-          "flow_rate_sensor_2": "Water Flow Rate Sensor 2 (optional)",
-          "power_sensor": "Electrical Power (W) Sensor (optional)",
-          "voltage_sensor": "Voltage (V) Sensor (optional)",
-          "current_sensor": "Current (A) Sensor (optional)",
-          "electricity_price_sensor": "Current Electricity Price (optional)"
+          "room_temp_sensor": "Room temperature (sensor)",
+          "outside_temp_sensor": "Outdoor temperature (sensor)",
+          "target_setpoint_entity": "Heat pump target temperature (number)",
+          "heatpump_switch": "Heat pump on/off (switch)",
+          "control_mode": "Control on",
+          "setpoint_step": "Target temperature step",
+          "return_temp_sensor": "Return water temperature (sensor)",
+          "flow_temp_sensor": "Supply water temperature (sensor)",
+          "floor_temp_sensor": "Floor/screed temperature (sensor)",
+          "compressor_freq_sensor": "Compressor frequency (sensor)",
+          "power_sensor": "Electrical power (sensor)",
+          "voltage_sensor": "Voltage (sensor)",
+          "current_sensor": "Current (sensor)",
+          "flow_rate_sensor_1": "Flow rate 1 (sensor)",
+          "flow_rate_sensor_2": "Flow rate 2 (sensor)",
+          "weather_entity": "Weather forecast (weather)",
+          "electricity_price_sensor": "Electricity price (sensor)",
+          "pv_power_sensor": "Solar power (sensor)",
+          "dhw_temp_sensor": "Hot water tank temperature (sensor)",
+          "dhw_switch": "Request hot water (switch)",
+          "dhw_setpoint_entity": "Hot water target temperature (number)"
+        },
+        "data_description": {
+          "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
+          "outside_temp_sensor": "Preferably a sensor that is not in direct sun.",
+          "target_setpoint_entity": "Entity that sets the water temperature target of the heat pump (e.g. Tuya Local). Empty = monitor and learn only.",
+          "heatpump_switch": "Optional. Only used in summer mode or on serious overheating.",
+          "control_mode": "Which water temperature your heat pump's target refers to.",
+          "setpoint_step": "Resolution of the heat pump (many Tuya units: 1 °C). The controller averages over time automatically.",
+          "return_temp_sensor": "Needed to learn the floor model (or use a floor sensor).",
+          "flow_temp_sensor": "Needed to learn how fast the floor heats up.",
+          "floor_temp_sensor": "Optional, makes the model more accurate. Without it the return temperature is used.",
+          "compressor_freq_sensor": "Tells the controller when the pump is really heating.",
+          "power_sensor": "In W or kW.",
+          "voltage_sensor": "Only if there is no power sensor.",
+          "current_sensor": "Only if there is no power sensor.",
+          "flow_rate_sensor_1": "For thermal power and COP.",
+          "flow_rate_sensor_2": "Only for parallel circuits that should be added up.",
+          "weather_entity": "For outdoor temperature and sun forecast.",
+          "electricity_price_sensor": "Optional. A forecast in the attributes (Nordpool, EPEX, Frank Energie, ENTSO-E) is detected automatically.",
+          "pv_power_sensor": "Optional. With a surplus, cheaper/free heat is stored in the floor.",
+          "dhw_temp_sensor": "Optional. Only fill in if the heat pump also makes hot water; enables the DHW function.",
+          "dhw_switch": "Switch that starts/stops a hot water cycle.",
+          "dhw_setpoint_entity": "Optional: set to the wanted temperature during a cycle."
+        }
+      },
+      "reconfigure": {
+        "title": "Change entities",
+        "description": "Link the sensors and controls of your heat pump. Only room and outdoor temperature are required; the more sensors, the smarter the control.",
+        "data": {
+          "room_temp_sensor": "Room temperature (sensor)",
+          "outside_temp_sensor": "Outdoor temperature (sensor)",
+          "target_setpoint_entity": "Heat pump target temperature (number)",
+          "heatpump_switch": "Heat pump on/off (switch)",
+          "control_mode": "Control on",
+          "setpoint_step": "Target temperature step",
+          "return_temp_sensor": "Return water temperature (sensor)",
+          "flow_temp_sensor": "Supply water temperature (sensor)",
+          "floor_temp_sensor": "Floor/screed temperature (sensor)",
+          "compressor_freq_sensor": "Compressor frequency (sensor)",
+          "power_sensor": "Electrical power (sensor)",
+          "voltage_sensor": "Voltage (sensor)",
+          "current_sensor": "Current (sensor)",
+          "flow_rate_sensor_1": "Flow rate 1 (sensor)",
+          "flow_rate_sensor_2": "Flow rate 2 (sensor)",
+          "weather_entity": "Weather forecast (weather)",
+          "electricity_price_sensor": "Electricity price (sensor)",
+          "pv_power_sensor": "Solar power (sensor)",
+          "dhw_temp_sensor": "Hot water tank temperature (sensor)",
+          "dhw_switch": "Request hot water (switch)",
+          "dhw_setpoint_entity": "Hot water target temperature (number)"
+        },
+        "data_description": {
+          "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
+          "outside_temp_sensor": "Preferably a sensor that is not in direct sun.",
+          "target_setpoint_entity": "Entity that sets the water temperature target of the heat pump (e.g. Tuya Local). Empty = monitor and learn only.",
+          "heatpump_switch": "Optional. Only used in summer mode or on serious overheating.",
+          "control_mode": "Which water temperature your heat pump's target refers to.",
+          "setpoint_step": "Resolution of the heat pump (many Tuya units: 1 °C). The controller averages over time automatically.",
+          "return_temp_sensor": "Needed to learn the floor model (or use a floor sensor).",
+          "flow_temp_sensor": "Needed to learn how fast the floor heats up.",
+          "floor_temp_sensor": "Optional, makes the model more accurate. Without it the return temperature is used.",
+          "compressor_freq_sensor": "Tells the controller when the pump is really heating.",
+          "power_sensor": "In W or kW.",
+          "voltage_sensor": "Only if there is no power sensor.",
+          "current_sensor": "Only if there is no power sensor.",
+          "flow_rate_sensor_1": "For thermal power and COP.",
+          "flow_rate_sensor_2": "Only for parallel circuits that should be added up.",
+          "weather_entity": "For outdoor temperature and sun forecast.",
+          "electricity_price_sensor": "Optional. A forecast in the attributes (Nordpool, EPEX, Frank Energie, ENTSO-E) is detected automatically.",
+          "pv_power_sensor": "Optional. With a surplus, cheaper/free heat is stored in the floor.",
+          "dhw_temp_sensor": "Optional. Only fill in if the heat pump also makes hot water; enables the DHW function.",
+          "dhw_switch": "Switch that starts/stops a hot water cycle.",
+          "dhw_setpoint_entity": "Optional: set to the wanted temperature during a cycle."
         }
       }
-    },
-    "error": {
-      "cannot_connect": "Failed to connect",
-      "invalid_auth": "Invalid authentication",
-      "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "Already configured",
+      "single_instance_allowed": "Only one Smart Heat Pump can be set up.",
+      "reconfigure_successful": "Settings updated"
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Smart Heat Pump Settings",
-        "description": "Update the linked entities for your heat pump.",
-        "data": {
-          "room_temp_sensor": "Room Temperature Sensor",
-          "outside_temp_sensor": "Outside Temperature Sensor",
-          "weather_entity": "Weather Forecast Entity",
-          "heatpump_switch": "Heat Pump On/Off Switch",
-          "target_setpoint_entity": "Heat Pump Target Setpoint Entity",
-          "control_mode": "Control Mode (retour or aanvoer)",
-          "compressor_freq_sensor": "Compressor Frequency",
-          "return_temp_sensor": "Return Water Temp",
-          "flow_temp_sensor": "Flow Water Temp",
-          "flow_rate_sensor_1": "Water Flow Rate 1",
-          "flow_rate_sensor_2": "Water Flow Rate 2",
-          "power_sensor": "Electrical Power (W)",
-          "voltage_sensor": "Voltage (V)",
-          "current_sensor": "Current (A)",
-          "electricity_price_sensor": "Current Electricity Price"
-        }
+  "selector": {
+    "control_mode": {
+      "options": {
+        "retour": "Return temperature",
+        "aanvoer": "Supply temperature"
       }
+    },
+    "setpoint_step": {
+      "options": {
+        "0.5": "0.5 °C",
+        "1.0": "1 °C"
+      }
+    }
+  },
+  "services": {
+    "reset_model": {
+      "name": "Reset learned model",
+      "description": "Clear the learned house and floor model and the evening correction."
     }
   }
 }

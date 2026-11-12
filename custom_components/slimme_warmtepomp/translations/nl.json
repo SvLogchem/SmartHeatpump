@@ -4,73 +4,129 @@
     "step": {
       "user": {
         "title": "Configuratie Slimme Warmtepomp",
-        "description": "Koppel hier de entiteiten van jouw fysieke warmtepomp en sensoren aan de zelflerende regeling.",
+        "description": "Koppel de sensoren en de aansturing van je warmtepomp. Alleen kamer- en buitentemperatuur zijn verplicht; hoe meer sensoren, hoe slimmer de regeling.",
         "data": {
-          "room_temp_sensor": "Ruimtetemperatuur Sensor (sensor...)",
-          "outside_temp_sensor": "Buitentemperatuur Sensor (sensor...)",
-          "weather_entity": "Weersverwachting Entiteit (weather...)",
-          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar (switch...)",
-          "target_setpoint_entity": "Doeltemperatuur Warmtepomp (number/climate...)",
-          "control_mode": "Sturingsmethode (retour of aanvoer)",
-          "compressor_freq_sensor": "Compressor Frequentie (sensor... - optioneel)",
-          "return_temp_sensor": "Retourtemperatuur Water (sensor... - optioneel)",
-          "flow_temp_sensor": "Aanvoertemperatuur Water (sensor... - optioneel)",
-          "flow_rate_sensor_1": "Flow / Doorstroming Sensor 1 (optioneel)",
-          "flow_rate_sensor_2": "Flow / Doorstroming Sensor 2 (optioneel)",
-          "power_sensor": "Elektrisch Vermogen (W) Sensor (optioneel)",
-          "voltage_sensor": "Voltage (V) Sensor (optioneel, indien geen vermogenssensor)",
-          "current_sensor": "Stroomsterkte (A) Sensor (optioneel, indien geen vermogenssensor)",
-          "electricity_price_sensor": "Actuele Stroomprijs (sensor... - optioneel)"
+          "room_temp_sensor": "Kamertemperatuur (sensor)",
+          "outside_temp_sensor": "Buitentemperatuur (sensor)",
+          "target_setpoint_entity": "Doeltemperatuur warmtepomp (number)",
+          "heatpump_switch": "Warmtepomp aan/uit (switch)",
+          "control_mode": "Sturen op",
+          "setpoint_step": "Stapgrootte doeltemperatuur",
+          "return_temp_sensor": "Retourtemperatuur (sensor)",
+          "flow_temp_sensor": "Aanvoertemperatuur (sensor)",
+          "floor_temp_sensor": "Vloer-/dekvloertemperatuur (sensor)",
+          "compressor_freq_sensor": "Compressorfrequentie (sensor)",
+          "power_sensor": "Elektrisch vermogen (sensor)",
+          "voltage_sensor": "Spanning (sensor)",
+          "current_sensor": "Stroomsterkte (sensor)",
+          "flow_rate_sensor_1": "Doorstroming 1 (sensor)",
+          "flow_rate_sensor_2": "Doorstroming 2 (sensor)",
+          "weather_entity": "Weersverwachting (weather)",
+          "electricity_price_sensor": "Stroomprijs (sensor)",
+          "pv_power_sensor": "Zonnepaneelvermogen (sensor)",
+          "dhw_temp_sensor": "Tapwatervat temperatuur (sensor)",
+          "dhw_switch": "Tapwater aanvragen (switch)",
+          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)"
+        },
+        "data_description": {
+          "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
+          "outside_temp_sensor": "Liefst een sensor die niet in de zon hangt.",
+          "target_setpoint_entity": "De entiteit waarmee de gewenste watertemperatuur van de warmtepomp wordt ingesteld (bijv. Tuya Local). Leeg = alleen meten en leren, niets aansturen.",
+          "heatpump_switch": "Optioneel. Wordt alleen gebruikt in de zomer of bij flinke oververhitting.",
+          "control_mode": "Op welke watertemperatuur het doel van je warmtepomp betrekking heeft.",
+          "setpoint_step": "Resolutie van de warmtepomp (veel Tuya-pompen: 1 °C). De regeling middelt automatisch over de tijd.",
+          "return_temp_sensor": "Nodig voor het leren van het vloermodel (of gebruik een vloersensor).",
+          "flow_temp_sensor": "Nodig voor het leren van het opwarmgedrag van de vloer.",
+          "floor_temp_sensor": "Optioneel, maakt het model nauwkeuriger. Zonder deze sensor wordt de retourtemperatuur gebruikt.",
+          "compressor_freq_sensor": "Hiermee weet de regeling wanneer de pomp echt verwarmt.",
+          "power_sensor": "In W of kW.",
+          "voltage_sensor": "Alleen als er geen vermogenssensor is.",
+          "current_sensor": "Alleen als er geen vermogenssensor is.",
+          "flow_rate_sensor_1": "Voor berekening van thermisch vermogen en COP.",
+          "flow_rate_sensor_2": "Alleen bij parallelle circuits die opgeteld moeten worden.",
+          "weather_entity": "Voor voorspelling van buitentemperatuur en zon.",
+          "electricity_price_sensor": "Optioneel. Een voorspelling in de attributen (Nordpool, EPEX, Frank Energie, ENTSO-E) wordt automatisch herkend.",
+          "pv_power_sensor": "Optioneel. Bij overschot wordt goedkoper/gratis warmte in de vloer opgeslagen.",
+          "dhw_temp_sensor": "Optioneel. Alleen invullen als de warmtepomp ook warm tapwater maakt; zet de tapwaterfunctie aan.",
+          "dhw_switch": "Schakelaar die een tapwatercyclus start/stopt.",
+          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet."
+        }
+      },
+      "reconfigure": {
+        "title": "Entiteiten aanpassen",
+        "description": "Koppel de sensoren en de aansturing van je warmtepomp. Alleen kamer- en buitentemperatuur zijn verplicht; hoe meer sensoren, hoe slimmer de regeling.",
+        "data": {
+          "room_temp_sensor": "Kamertemperatuur (sensor)",
+          "outside_temp_sensor": "Buitentemperatuur (sensor)",
+          "target_setpoint_entity": "Doeltemperatuur warmtepomp (number)",
+          "heatpump_switch": "Warmtepomp aan/uit (switch)",
+          "control_mode": "Sturen op",
+          "setpoint_step": "Stapgrootte doeltemperatuur",
+          "return_temp_sensor": "Retourtemperatuur (sensor)",
+          "flow_temp_sensor": "Aanvoertemperatuur (sensor)",
+          "floor_temp_sensor": "Vloer-/dekvloertemperatuur (sensor)",
+          "compressor_freq_sensor": "Compressorfrequentie (sensor)",
+          "power_sensor": "Elektrisch vermogen (sensor)",
+          "voltage_sensor": "Spanning (sensor)",
+          "current_sensor": "Stroomsterkte (sensor)",
+          "flow_rate_sensor_1": "Doorstroming 1 (sensor)",
+          "flow_rate_sensor_2": "Doorstroming 2 (sensor)",
+          "weather_entity": "Weersverwachting (weather)",
+          "electricity_price_sensor": "Stroomprijs (sensor)",
+          "pv_power_sensor": "Zonnepaneelvermogen (sensor)",
+          "dhw_temp_sensor": "Tapwatervat temperatuur (sensor)",
+          "dhw_switch": "Tapwater aanvragen (switch)",
+          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)"
+        },
+        "data_description": {
+          "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
+          "outside_temp_sensor": "Liefst een sensor die niet in de zon hangt.",
+          "target_setpoint_entity": "De entiteit waarmee de gewenste watertemperatuur van de warmtepomp wordt ingesteld (bijv. Tuya Local). Leeg = alleen meten en leren, niets aansturen.",
+          "heatpump_switch": "Optioneel. Wordt alleen gebruikt in de zomer of bij flinke oververhitting.",
+          "control_mode": "Op welke watertemperatuur het doel van je warmtepomp betrekking heeft.",
+          "setpoint_step": "Resolutie van de warmtepomp (veel Tuya-pompen: 1 °C). De regeling middelt automatisch over de tijd.",
+          "return_temp_sensor": "Nodig voor het leren van het vloermodel (of gebruik een vloersensor).",
+          "flow_temp_sensor": "Nodig voor het leren van het opwarmgedrag van de vloer.",
+          "floor_temp_sensor": "Optioneel, maakt het model nauwkeuriger. Zonder deze sensor wordt de retourtemperatuur gebruikt.",
+          "compressor_freq_sensor": "Hiermee weet de regeling wanneer de pomp echt verwarmt.",
+          "power_sensor": "In W of kW.",
+          "voltage_sensor": "Alleen als er geen vermogenssensor is.",
+          "current_sensor": "Alleen als er geen vermogenssensor is.",
+          "flow_rate_sensor_1": "Voor berekening van thermisch vermogen en COP.",
+          "flow_rate_sensor_2": "Alleen bij parallelle circuits die opgeteld moeten worden.",
+          "weather_entity": "Voor voorspelling van buitentemperatuur en zon.",
+          "electricity_price_sensor": "Optioneel. Een voorspelling in de attributen (Nordpool, EPEX, Frank Energie, ENTSO-E) wordt automatisch herkend.",
+          "pv_power_sensor": "Optioneel. Bij overschot wordt goedkoper/gratis warmte in de vloer opgeslagen.",
+          "dhw_temp_sensor": "Optioneel. Alleen invullen als de warmtepomp ook warm tapwater maakt; zet de tapwaterfunctie aan.",
+          "dhw_switch": "Schakelaar die een tapwatercyclus start/stopt.",
+          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet."
         }
       }
-    },
-    "error": {
-      "cannot_connect": "Kan geen verbinding maken",
-      "invalid_auth": "Ongeldige authenticatie",
-      "unknown": "Onverwachte fout opgetreden"
     },
     "abort": {
-      "already_configured": "Deze Slimme Warmtepomp is al geconfigureerd"
+      "already_configured": "Deze Slimme Warmtepomp is al geconfigureerd",
+      "single_instance_allowed": "Er kan maar één Slimme Warmtepomp worden ingesteld.",
+      "reconfigure_successful": "Instellingen bijgewerkt"
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Instellingen Slimme Warmtepomp",
-        "description": "Pas de gekoppelde entiteiten van de warmtepomp aan.",
-        "data": {
-          "room_temp_sensor": "Ruimtetemperatuur Sensor",
-          "outside_temp_sensor": "Buitentemperatuur Sensor",
-          "weather_entity": "Weersverwachting Entiteit",
-          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar",
-          "target_setpoint_entity": "Doeltemperatuur Warmtepomp",
-          "control_mode": "Sturingsmethode (retour of aanvoer)",
-          "compressor_freq_sensor": "Compressor Frequentie (Hz)",
-          "return_temp_sensor": "Retourtemperatuur Water",
-          "flow_temp_sensor": "Aanvoertemperatuur Water",
-          "flow_rate_sensor_1": "Flow / Doorstroming Sensor 1",
-          "flow_rate_sensor_2": "Flow / Doorstroming Sensor 2",
-          "power_sensor": "Elektrisch Vermogen (W)",
-          "voltage_sensor": "Voltage (V)",
-          "current_sensor": "Stroomsterkte (A)",
-          "electricity_price_sensor": "Actuele Stroomprijs"
-        }
+  "selector": {
+    "control_mode": {
+      "options": {
+        "retour": "Retourtemperatuur",
+        "aanvoer": "Aanvoertemperatuur"
+      }
+    },
+    "setpoint_step": {
+      "options": {
+        "0.5": "0,5 °C",
+        "1.0": "1 °C"
       }
     }
   },
-  "entity": {
-    "climate": {
-      "slimme_wp_thermostaat": {
-        "state_attributes": {
-          "preset_mode": {
-            "state": {
-              "Dag": "Dagprogramma",
-              "Nacht": "Nachtprogramma",
-              "Handmatig": "Handmatig"
-            }
-          }
-        }
-      }
+  "services": {
+    "reset_model": {
+      "name": "Reset geleerd model",
+      "description": "Wis het geleerde huis- en vloermodel en de avondcorrectie."
     }
   }
 }
