@@ -15,7 +15,7 @@ NUMBER_SPECS: list[tuple] = [
     ("minimum_runtime", "Slimme WP Minimale Draaitijd", 5.0, 60.0, 5.0, "min", 15.0, "core"),
     ("minimum_stilstand", "Slimme WP Minimale Stilstandtijd", 1.0, 60.0, 1.0, "min", 10.0, "core"),
     ("waakhond_marge", "Slimme WP Waakhond Marge", 0.1, 2.0, 0.1, "°C", 0.5, "core"),
-    ("min_freq", "Slimme WP Compressor Drempel", 1.0, 50.0, 1.0, "Hz", 10.0, "core"),
+    ("min_freq", "Slimme WP Compressor Drempel", 1.0, 50.0, 1.0, "Hz", 2.0, "core"),
     ("max_flow_temp", "Slimme WP Max Aanvoertemperatuur", 25.0, 60.0, 1.0, "°C", 40.0, "core"),
     ("min_kamertemp", "Slimme WP Minimale Kamertemperatuur", 10.0, 20.0, 0.5, "°C", 16.0, "core"),
     ("stookgrens", "Slimme WP Zomermodus Stookgrens", 10.0, 25.0, 0.5, "°C", 18.0, "core"),

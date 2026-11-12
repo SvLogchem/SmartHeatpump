@@ -15,6 +15,8 @@ PRESET_DAY, PRESET_NIGHT, PRESET_MANUAL = PROGRAM_DAY, PROGRAM_NIGHT, PROGRAM_MA
 
 
 class SlimmeWarmtepompThermostaat(SlimmeWPEntity, ClimateEntity, RestoreEntity):
+    # v1 behaviour: HEATING = compressor runs, FAN = "circuleren" (pump on, compressor stopped),
+    # IDLE = "stand-by" (the controller switched the heat pump off), OFF = system off.
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_preset_modes = [PRESET_DAY, PRESET_NIGHT, PRESET_MANUAL]
     _attr_supported_features = (
@@ -76,9 +78,11 @@ class SlimmeWarmtepompThermostaat(SlimmeWPEntity, ClimateEntity, RestoreEntity):
         d = self.decision
         if not self.coordinator.hvac_on:
             return HVACAction.OFF
+        if d is not None and d.switch_state == "off":
+            return HVACAction.IDLE
         if d is not None and d.heating:
             return HVACAction.HEATING
-        return HVACAction.IDLE
+        return HVACAction.FAN
 
     @property
     def extra_state_attributes(self) -> dict:

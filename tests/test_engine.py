@@ -228,3 +228,18 @@ def test_state_roundtrip():
     assert c2.model.params == c.model.params and c2.tracker.bias == 1.0
     assert c2.dhw.last_legionella == c.dhw.last_legionella
     c2.import_state({"model": "garbage"})  # must not raise
+
+
+def test_shadow_mode_calculates_everything_but_sends_nothing():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 12, 0, tzinfo=TZ)
+    d = c.step(_inp(t, room=22.8, switch_state="on", regeling_actief=False))
+    assert d.shadow and d.setpoint is not None and d.reason != "regeling_uit"
+    assert d.switch is None and d.dhw_request is None
+    # same inputs with the controller active: the calculation is identical
+    d2 = SmartController().step(_inp(t, room=22.8, switch_state="on"))
+    assert d2.setpoint == d.setpoint and not d2.shadow
+
+
+def test_default_compressor_threshold_matches_v1():
+    assert DEFAULTS["min_freq"] == 2.0
