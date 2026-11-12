@@ -40,6 +40,10 @@ Alles hieronder is optioneel: koppel je de sensor niet, dan bestaan de bijbehore
 - **COP en starts per dag**: `sensor.slimme_wp_cop_vandaag`, `..._cop_gisteren`, `..._starts_vandaag`, `..._starts_gisteren`. Veel starts per dag betekent korte-cycli; dat kun je met minimale draaitijd verbeteren.
 - **Geleerde stooklijn**: attribuut `geleerde_stooklijn` (aanvoertemperatuur bij -5/0/5/10/15 °C buiten), alleen zichtbaar als het model betrouwbaar is.
 
+## Zacht draaien (laag compressortoerental)
+
+De frequentie van de pomp kan niet worden aangestuurd, maar het verschil tussen setpoint en retourtemperatuur wel, en daar bepaalt de pomp zelf zijn toerental uit. De integratie leert per verschil (stappen van 0,5 K) of de compressor blijft draaien en met welke frequentie en welk vermogen. Het *minimale verschil* waarbij de compressor nog draait wordt het vloerverschil. Als er weinig warmte nodig is (kamer op setpoint, geen voorverwarmen) houdt de regeling het setpoint op retour + dat minimum + `modulatie_marge`, zodat de pomp zacht blijft draaien in plaats van hard te draaien en te stoppen. Af en toe (hoogstens elke 2 uur, 30 minuten, alleen als de kamer boven setpoint zit) probeert hij 0,5 K lager om de kennis bij te houden. Zonder geleerde waarde doet de functie niets. Uitzetten kan met `switch.slimme_wp_modulatie_actief`; je ziet het aan `binary_sensor.slimme_wp_zacht_draaien` en de attributen `modulatie_minimaal_verschil` en `modulatie_frequentie_op_minimum` van `sensor.slimme_wp_setpoint`.
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.

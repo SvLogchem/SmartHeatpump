@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from .dhw import DhwController
 from .model import HouseModel
+from .modulation import ModulationLearner
 from .planner import PlanInput, PlanResult, plan as run_plan
 from .prices import PriceCurve, PriceStats, weight_for
 from .settings import DEFAULTS
@@ -55,6 +56,7 @@ class Inputs:
     learning_enabled: bool = True
     preheat_enabled: bool = True
     price_enabled: bool = True
+    modulation_enabled: bool = True
     dhw_enabled: bool = False
     windows_open: bool = False            # any configured window/door sensor reports open
     away: bool = False                    # nobody home (raw; the controller debounces it)
@@ -91,6 +93,7 @@ class Decision:
     window_open: bool = False
     away: bool = False
     grid_limited: bool = False
+    soft: bool = False                 # setpoint held just above the return temperature (low frequency)
     cop_today: float | None = None
     cop_yesterday: float | None = None
     starts_today: int = 0
@@ -167,6 +170,7 @@ class SmartController:
         self.tracker = EveningTracker()
         self.prices = PriceStats()
         self.dhw = DhwController()
+        self.mod = ModulationLearner()
         # persistent scalars
         self.pi_i = 0.0
         self.summer_mean: float | None = None
@@ -204,6 +208,10 @@ class SmartController:
         self._grid_lock_until: datetime | None = None
         self._was_heating: bool | None = None
         self._stopped_at: datetime | None = None
+        self._tgt_value: float | None = None
+        self._tgt_since: datetime | None = None
+        self._probe_until: datetime | None = None
+        self._probe_next: datetime | None = None
 
     def reset_model(self) -> None:
         self.model.reset()
@@ -215,7 +223,7 @@ class SmartController:
     def export_state(self) -> dict:
         return {
             "model": self.model.to_dict(), "tracker": self.tracker.to_dict(),
-            "prices": self.prices.to_dict(), "dhw": self.dhw.to_dict(),
+            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "dhw": self.dhw.to_dict(),
             "pi_i": self.pi_i, "summer_mean": self.summer_mean, "summer": self.summer,
             "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
             "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
@@ -229,6 +237,7 @@ class SmartController:
             self.tracker.from_dict(d.get("tracker", {}))
             self.prices.from_dict(d.get("prices", {}))
             self.dhw.from_dict(d.get("dhw", {}))
+            self.mod.from_dict(d.get("mod", {}))
             self.pi_i = float(d.get("pi_i", 0.0))
             self.summer_mean = d.get("summer_mean")
             self.summer = bool(d.get("summer", False))
@@ -396,6 +405,15 @@ class SmartController:
         self.energy_th += d.thermal_kw * e_dt
         self.energy_el += power_w / 1000.0 * e_dt
         d.energy_thermal_kwh, d.energy_electric_kwh = round(self.energy_th, 3), round(self.energy_el, 3)
+
+        # ---- learn how the heat pump reacts to the gap between setpoint and return temperature
+        if inp.target_current != self._tgt_value:
+            self._tgt_value, self._tgt_since = inp.target_current, now
+        if (inp.target_current is not None and inp.ret is not None and inp.hvac_on and not d.defrost
+                and not self.dhw.active and not window_active and inp.switch_state != "off"
+                and self._tgt_since is not None and now - self._tgt_since >= timedelta(minutes=15)
+                and inp.learning_enabled):
+            self.mod.observe(inp.target_current - inp.ret, d.heating, inp.freq, d.thermal_kw or None)
 
         # ---- daily statistics: COP and compressor starts per day
         key = now.date().isoformat()
@@ -599,6 +617,8 @@ class SmartController:
             kick = min(kick, s["stille_boost_max"] if in_quiet else 5.0)
             pv = s["pv_boost"] if (pv_surplus and tr < sp_now + s["tolerantie_hoog"]) else 0.0
             raw = s_base(now, to_now, sun_fn(now), sp_now) + self.pi_i + kick + pv
+            raw, soft = self._soft_running(raw, inp, s, now, e, pl.delta_now, tr, sp_now, in_quiet)
+            d.soft = soft
             raw = _clamp(raw, S_MIN, s_max)
             if self._prev_s is not None and dt_h > 0:
                 lim = max(0.5, 12.0 * dt_h)
@@ -644,6 +664,8 @@ class SmartController:
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),
+            "modulatie_minimaal_verschil": self.mod.floor(),
+            "modulatie_frequentie_op_minimum": self.mod.freq_at_floor(),
         }
 
     def _learned_curve(self, s: dict):
@@ -654,6 +676,35 @@ class SmartController:
         for to in (-5, 0, 5, 10, 15):
             out[str(to)] = round(self.model.floor_equilibrium(s["setpoint_dag"], to, 0.0), 1)
         return out
+
+    def _soft_running(self, raw: float, inp: Inputs, s: dict, now: datetime, e: float,
+                      delta_now: float, tr: float, sp_now: float, in_quiet: bool):
+        """When little heat is needed, hold the setpoint just above the return temperature.
+
+        The learned floor is the smallest gap that still kept the compressor running; the heat
+        pump then modulates down instead of running hard and stopping. A small, occasional probe
+        one step below the floor keeps the knowledge up to date.
+        """
+        if not (inp.modulation_enabled and inp.ret is not None):
+            return raw, False
+        floor = self.mod.floor()
+        low_demand = e <= 0.15 and delta_now <= 0.0 and tr >= sp_now - 0.15
+        if floor is None or not low_demand:
+            self._probe_until = None
+            return raw, False
+        gap = floor + s["modulatie_marge"]
+        if self._probe_until and now < self._probe_until:
+            gap = floor - 0.5
+        elif self._probe_until:
+            self._probe_until, self._probe_next = None, now + timedelta(hours=2)
+        elif (self.mod.needs_probe() and tr >= sp_now + 0.1
+              and (self._probe_next is None or now >= self._probe_next)):
+            self._probe_until = now + timedelta(minutes=30)
+            gap = floor - 0.5
+        target = inp.ret + gap
+        if target < raw:
+            return target, True
+        return raw, False
 
     def _grid_limiter(self, inp: Inputs, s: dict, now: datetime) -> bool:
         """Back off when the house draws too much from the grid (capacity tariff, battery saver).

@@ -335,3 +335,53 @@ def test_daily_cop_and_compressor_starts():
 def test_learned_curve_is_published_only_when_model_is_trusted():
     c = SmartController()
     assert c.step(_inp(_t(0))).diag["geleerde_stooklijn"] is None
+
+
+# ---------------------------------------------------------------- zacht draaien (modulatie)
+def test_modulation_learner_finds_lowest_gap_that_keeps_compressor_running():
+    from engine.modulation import ModulationLearner
+    m = ModulationLearner()
+    for _ in range(12):
+        m.observe(0.0, False, 0.0, None)          # gap too small: compressor stops
+        m.observe(1.0, True, 18.0, 2.0)
+        m.observe(2.0, True, 30.0, 3.5)
+        m.observe(4.0, True, 50.0, 5.5)
+    assert m.floor() == 1.0
+    assert m.freq_at_floor() == 18.0
+    m2 = ModulationLearner()
+    m2.from_dict(m.to_dict())
+    assert m2.floor() == 1.0
+    assert ModulationLearner().floor() is None     # nothing learned: never interferes
+
+
+def test_soft_running_caps_setpoint_just_above_return_when_little_heat_is_needed():
+    c = SmartController()
+    for _ in range(12):
+        c.mod.observe(1.0, True, 18.0, 2.0)
+        c.mod.observe(3.0, True, 40.0, 4.0)
+    t = _t(0)
+    inp = _inp(t, room=21.1, ret=26.0, flow=28.0, freq=30.0, target_current=29.0)
+    d = c.step(inp)
+    assert not d.coasting
+    assert d.soft and d.setpoint_raw <= 26.0 + 1.0 + DEFAULTS["modulatie_marge"] + 0.01
+    # room clearly cold: no capping, full heat
+    c2 = SmartController()
+    for _ in range(12):
+        c2.mod.observe(1.0, True, 18.0, 2.0)
+    d2 = c2.step(_inp(t, room=19.5, ret=26.0, flow=28.0, freq=30.0, target_current=29.0))
+    assert not d2.soft
+    # switch off: never capped
+    c3 = SmartController()
+    for _ in range(12):
+        c3.mod.observe(1.0, True, 18.0, 2.0)
+    d3 = c3.step(_inp(t, room=21.1, ret=26.0, flow=28.0, freq=30.0, target_current=29.0, modulation_enabled=False))
+    assert not d3.soft
+
+
+def test_modulation_state_survives_restart():
+    c = SmartController()
+    for _ in range(10):
+        c.mod.observe(1.5, True, 20.0, 2.0)
+    c2 = SmartController()
+    c2.import_state(c.export_state())
+    assert c2.mod.floor() == 1.5
