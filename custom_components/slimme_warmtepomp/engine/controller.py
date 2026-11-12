@@ -517,7 +517,7 @@ class SmartController:
         use_learned = inp.learning_enabled and f_known and self.model.plausible()
         wl = _clamp((conf - 0.35) / 0.45, 0.0, 1.0) if use_learned else 0.0
         w_off = self.dT_sup if mode == "retour" else 0.0
-        s_max = max(s["max_flow_temp"], S_MIN + 1.0)
+        s_max = max(s["max_flow_temp"], s["min_setpoint"] + 1.0)
 
         def s_manual(to, sun, sp):
             return (s["basis_temperatuur"] + s["setpoint_offset"] + s["stooklijn"] * (20.0 - to)
@@ -526,12 +526,12 @@ class SmartController:
         def s_base(t, to, sun, sp):
             man = s_manual(to, sun, sp)
             if wl <= 0.0:
-                return _clamp(man, S_MIN, s_max)
+                return _clamp(man, s["min_setpoint"], s_max)
             # retour mode: the setpoint *is* the floor/return temperature; aanvoer: supply water
             eq = (self.model.floor_equilibrium(sp, to, sun) if mode == "retour"
                   else self.model.water_equilibrium(sp, to, sun))
             lrn = _clamp(eq, man - 6.0, man + 6.0)
-            return _clamp(wl * lrn + (1.0 - wl) * man, S_MIN, s_max)
+            return _clamp(wl * lrn + (1.0 - wl) * man, s["min_setpoint"], s_max)
 
         # ---- weather forecast helpers
         fc_t = sorted([(t, v) for t, v, _ in inp.weather], key=lambda x: x[0])
@@ -576,7 +576,7 @@ class SmartController:
                 self._plan = run_plan(PlanInput(
                     now=now, tr=tr, f=self.f_est, model=self.model, to_fn=to_fn, sun_fn=sun_fn,
                     sp_fn=sp_at, price_fn=price_fn, s_base_fn=s_base, w_offset=w_off,
-                    s_min=S_MIN, s_max=s_max, bedtime=bedtime, quiet_fn=quiet_fn,
+                    s_min=s["min_setpoint"], s_max=s_max, bedtime=bedtime, quiet_fn=quiet_fn,
                     quiet_boost=s["stille_boost_max"], tol_low=s["tolerantie_laag"],
                     tol_high=s["tolerantie_hoog"], d_max=s["voorverwarm_max"],
                     bias=self.tracker.bias, hard_min_room=s["min_kamertemp"],
@@ -610,7 +610,7 @@ class SmartController:
 
         # ---- setpoint
         if d.coasting:
-            raw = (x_meas - 1.0) if x_meas is not None else S_MIN
+            raw = _clamp((x_meas - 1.0) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
             d.reason = ("zomermodus" if self.summer else "raam_open" if window_active
                         else "netlimiet" if grid_block else "dure_stroom" if cap_coast
                         else "te_warm" if over else "uitlopen" if pl.coast_now else "wacht_draaitijd")
@@ -633,7 +633,7 @@ class SmartController:
                 limited = max(base_now, inp.ret + cap)
                 if raw > limited:
                     raw, d.freq_limited = limited, True
-            raw = _clamp(raw, S_MIN, s_max)
+            raw = _clamp(raw, s["min_setpoint"], s_max)
             if self._prev_s is not None and dt_h > 0:
                 lim = max(0.5, 12.0 * dt_h)
                 raw = _clamp(raw, self._prev_s - lim, self._prev_s + lim)
