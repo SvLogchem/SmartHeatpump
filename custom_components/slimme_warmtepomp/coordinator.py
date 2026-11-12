@@ -213,7 +213,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             self.preset = d.program
         if d.setpoint is not None:
             self.last_setpoint = d.setpoint
-            if cfg.get(CONF_TARGET):
+            if cfg.get(CONF_TARGET) and not d.shadow:
                 await self._set_number(cfg[CONF_TARGET], d.setpoint)
         if d.switch and cfg.get(CONF_SWITCH):
             ent = cfg[CONF_SWITCH]

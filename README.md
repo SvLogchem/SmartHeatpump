@@ -36,6 +36,8 @@ Controleer na een paar dagen de sensoren *Modelvertrouwen*, *Voorspelde Kamer 1u
 - `sensor.slimme_wp_setpoint`: laatst ingestelde watertemperatuur, met veel diagnose in de attributen.
 - Overige sensoren: reden van de laatste beslissing, plan, modelvertrouwen, geleerde afkoeltijden, geschatte vloertemperatuur, thermische/elektrische energie (kWh, geschikt voor het energiedashboard), gemiddelde COP.
 - Schakelaars om onderdelen uit te zetten: *Regeling*, *Leren*, *Voorverwarmen*, *Prijssturing*, *Tapwatersturing*.
+- **Schaduwmodus:** staat *Regeling Actief* uit, dan wordt alles nog steeds berekend en getoond (setpoint, plan, leren), maar er gaat niets naar de warmtepomp of de schakelaar.
+- Thermostaatstatus: *Verwarmen* (compressor draait), *Circuleren* (pomp aan, compressor staat stil), *Stand-by* (de regeling heeft de pomp uitgezet), *Uit*.
 - Dienst `slimme_warmtepomp.reset_model` wist het geleerde model.
 
 ## Upgraden van v1

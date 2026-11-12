@@ -137,7 +137,7 @@ def install():
         ClimateEntity=D('ClimateEntity'),
         ClimateEntityFeature=enum.IntFlag("F", {"TARGET_TEMPERATURE": 1, "PRESET_MODE": 2, "TURN_ON": 4, "TURN_OFF": 8}),
         HVACMode=StrEnum("HVACMode", {"HEAT": "heat", "OFF": "off"}),
-        HVACAction=StrEnum("HVACAction", {"HEATING": "heating", "IDLE": "idle", "OFF": "off"}))
+        HVACAction=StrEnum("HVACAction", {"HEATING": "heating", "IDLE": "idle", "OFF": "off", "FAN": "fan"}))
     mod("homeassistant.components.number", NumberEntity=D('NumberEntity'),
         NumberMode=StrEnum("NumberMode", {"BOX": "box"}))
     mod("homeassistant.components.switch", SwitchEntity=D('SwitchEntity'))

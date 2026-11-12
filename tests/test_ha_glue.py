@@ -227,3 +227,26 @@ def test_config_flow_schema_builds():
         "room_temp_sensor": "sensor.a", "outside_temp_sensor": "sensor.b", "setpoint_step": 0.5,
         "control_mode": "retour"}
     assert schema
+
+
+def test_shadow_mode_shows_setpoint_but_does_not_write(setup):
+    h, entry, c = setup
+    by_uid = {e._attr_unique_id: e for _, e in h.entities}
+    run(by_uid["abc123_regeling_actief"].async_turn_off())
+    h.services.calls.clear()
+    h.states.set("sensor.room", 19.0)
+    run(c.async_request_refresh())
+    assert c.data.shadow and c.last_setpoint is not None
+    assert not [x for x in h.services.calls if x[2].get("entity_id") in ("number.wp_target", "switch.wp")]
+
+
+def test_hvac_action_matches_v1_wording(setup):
+    h, entry, c = setup
+    climate = {e._attr_unique_id: e for _, e in h.entities}["abc123_climate"]
+    A = sys.modules["homeassistant.components.climate"].HVACAction
+    h.states.set("sensor.freq", 40); h.states.set("switch.wp", "on")
+    run(c.async_request_refresh()); assert climate.hvac_action == A.HEATING
+    h.states.set("sensor.freq", 0)
+    run(c.async_request_refresh()); assert climate.hvac_action == A.FAN        # circuleren
+    h.states.set("switch.wp", "off")
+    run(c.async_request_refresh()); assert climate.hvac_action == A.IDLE       # stand-by

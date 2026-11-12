@@ -84,6 +84,8 @@ class Decision:
     bivalent: bool = False
     dhw_active: bool = False
     heating: bool = False
+    shadow: bool = False               # computed, but nothing is sent to the heat pump
+    switch_state: str | None = None    # observed state of the heat pump switch
     thermal_kw: float = 0.0
     cop: float = 0.0
     electric_w: float = 0.0
@@ -335,6 +337,8 @@ class SmartController:
         sun_now = sun_gain(now, inp.lat, inp.lon, inp.cloud_now)
         d.bivalent = to_now < s["bivalent_temp"]
         d.heating = heating and not d.defrost
+        d.switch_state = inp.switch_state
+        d.shadow = not inp.regeling_actief
 
         power_w = inp.power_w or 0.0
         if d.defrost or not heating or not inp.flow_lh or inp.flow is None or inp.ret is None:
@@ -416,10 +420,6 @@ class SmartController:
             d.reason = "uit"
             if inp.regeling_actief and inp.switch_state == "on":
                 d.switch = "off"
-            self._finish(d, now)
-            return d
-        if not inp.regeling_actief:
-            d.reason = "regeling_uit"
             self._finish(d, now)
             return d
         if dhw.active:
@@ -581,6 +581,9 @@ class SmartController:
         }
 
     def _finish(self, d: Decision, now: datetime) -> None:
+        if d.shadow:  # "schaduwmodus": everything is calculated and visible, nothing is sent
+            d.switch = None
+            d.dhw_request = None
         self._last = d
 
 
