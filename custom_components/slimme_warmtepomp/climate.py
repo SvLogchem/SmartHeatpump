@@ -20,7 +20,8 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
     def __init__(self, hass, config_entry):
         self.hass = hass
         self._config_entry = config_entry
-        self._attr_name = "Slimme Warmtepomp Thermostaat"
+        self._attr_name = "Slimme WP Thermostaat"
+        self.entity_id = "climate.slimme_wp_thermostaat"
         self._attr_unique_id = f"{config_entry.entry_id}_climate"
         
         config = {**config_entry.data, **config_entry.options}
@@ -33,7 +34,7 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
         
         self._attr_precision = 0.1
-        self._attr_target_temperature_step = 0.1  # Gecorrigeerde Home Assistant variabele!
+        self._attr_target_temperature_step = 0.1
         self._attr_min_temp = 15.0
         self._attr_max_temp = 25.0
         
@@ -55,17 +56,12 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
 
     @property
     def precision(self) -> float: return 0.1
+    @property
+    def target_temperature_step(self) -> float: return 0.1
     
     @property
-    def target_temperature_step(self) -> float: return 0.1  # Gecorrigeerde variabele!
-
-    @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": "Slimme Warmtepomp",
-            "manufacturer": "Custom HEMS",
-        }
+        return {"identifiers": {(DOMAIN, self._config_entry.entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
 
     @property
     def native_current_temperature(self):
@@ -78,8 +74,32 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
 
     @property
     def hvac_action(self):
-        if self._attr_hvac_mode == HVACMode.OFF: return HVACAction.OFF
-        return HVACAction.HEATING
+        if self._attr_hvac_mode == HVACMode.OFF: 
+            return HVACAction.OFF
+            
+        config = {**self._config_entry.data, **self._config_entry.options}
+        tuya_switch = config.get("heatpump_switch")
+        freq_sensor = config.get("compressor_freq_sensor")
+        
+        switch_is_on = False
+        if tuya_switch:
+            state = self.hass.states.get(tuya_switch)
+            if state and state.state == "on":
+                switch_is_on = True
+
+        if not switch_is_on and tuya_switch:
+            return HVACAction.IDLE 
+            
+        freq = 0.0
+        if freq_sensor:
+            freq_state = self.hass.states.get(freq_sensor)
+            if freq_state and freq_state.state not in ['unknown', 'unavailable']:
+                try: freq = float(freq_state.state)
+                except ValueError: pass
+
+        if freq > 2.0:
+            return HVACAction.HEATING
+        return HVACAction.FAN
 
     async def async_set_temperature(self, **kwargs):
         if ATTR_TEMPERATURE in kwargs:
@@ -98,25 +118,16 @@ class SlimmeWarmtepompThermostaat(ClimateEntity, RestoreEntity):
         self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
-        if self._tuya_switch and not self._tuya_switch.startswith("virtual_"):
-            svc = "input_boolean" if self._tuya_switch.startswith("input_boolean") else "switch"
-            if hvac_mode == HVACMode.HEAT:
-                await self.hass.services.async_call(svc, "turn_on", {"entity_id": self._tuya_switch})
-            elif hvac_mode == HVACMode.OFF:
-                await self.hass.services.async_call(svc, "turn_off", {"entity_id": self._tuya_switch})
         self._attr_hvac_mode = hvac_mode
+        regeling_switch = self.hass.states.get("switch.slimme_wp_regeling_actief")
+        mag_aansturen = False if (regeling_switch and regeling_switch.state == "off") else True
+
+        if mag_aansturen and hvac_mode == HVACMode.OFF and self._tuya_switch and not self._tuya_switch.startswith("virtual_"):
+            svc = "input_boolean" if self._tuya_switch.startswith("input_boolean") else "switch"
+            await self.hass.services.async_call(svc, "turn_off", {"entity_id": self._tuya_switch})
         self.async_write_ha_state()
 
     async def async_update(self):
-        config = {**self._config_entry.data, **self._config_entry.options}
-        self._room_sensor = config.get("room_temp_sensor")
-        self._tuya_switch = config.get("heatpump_switch")
-
-        if self._tuya_switch and not self._tuya_switch.startswith("virtual_"):
-            state = self.hass.states.get(self._tuya_switch)
-            if state:
-                self._attr_hvac_mode = HVACMode.HEAT if state.state == "on" else HVACMode.OFF
-        
         if self._attr_preset_mode != PRESET_MANUAL:
             sensor_state = self.hass.states.get("sensor.slimme_wp_setpoint")
             if sensor_state and "actief_programma" in sensor_state.attributes:
