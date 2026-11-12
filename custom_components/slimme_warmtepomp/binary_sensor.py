@@ -14,6 +14,7 @@ SPECS = [
     ("voorverwarmen", "voorverwarmen", "Slimme WP Voorverwarmen Bezig", "preheating", None),
     ("uitlopen", "uitlopen", "Slimme WP Uitlopen (Niet Verwarmen)", "coasting", None),
     ("bivalent", "bivalent", "Slimme WP Onder Bivalent Punt", "bivalent", None),
+    ("zacht_draaien", "zacht_draaien", "Slimme WP Zacht Draaien (Laag Vermogen)", "soft", None),
     ("sensor_probleem", "sensor_probleem", "Slimme WP Sensorprobleem", "sensor_problem",
      BinarySensorDeviceClass.PROBLEM),
 ]

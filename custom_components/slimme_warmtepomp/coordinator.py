@@ -217,6 +217,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             learning_enabled=self.switches["leren_actief"],
             preheat_enabled=self.switches["voorverwarmen_actief"],
             price_enabled=self.switches["prijssturing_actief"],
+            modulation_enabled=self.switches["modulatie_actief"],
             dhw_enabled=self.has_dhw and self.switches["dhw_actief"],
             preset=self.preset, manual_temp=self.manual_temp, switch_state=sw,
             target_current=target, setpoint_step=float(cfg.get(CONF_STEP, 1.0)),

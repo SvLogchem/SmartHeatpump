@@ -33,6 +33,7 @@ NUMBER_SPECS: list[tuple] = [
     # --- stroomprijs & zonnepanelen ---
     ("max_stroomprijs", "Slimme WP Max Stroomprijs", 0.05, 3.0, 0.01, "€", 0.35, "core"),
     ("prijs_gevoeligheid", "Slimme WP Prijsgevoeligheid", 0.0, 3.0, 0.1, "", 1.0, "core"),
+    ("modulatie_marge", "Slimme WP Modulatie Marge", 0.0, 2.0, 0.1, "°C", 0.3, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),
     ("pv_drempel", "Slimme WP Zonnepanelen Drempel", 200.0, 8000.0, 100.0, "W", 1500.0, "core"),
     # --- open ramen/deuren, aanwezigheid, netlimiet (optioneel) ---
@@ -54,6 +55,7 @@ SWITCH_SPECS: list[tuple] = [
     ("leren_actief", "Slimme WP Leren Actief", True, "mdi:brain", "core"),
     ("voorverwarmen_actief", "Slimme WP Voorverwarmen Actief", True, "mdi:radiator", "core"),
     ("prijssturing_actief", "Slimme WP Prijssturing Actief", True, "mdi:currency-eur", "core"),
+    ("modulatie_actief", "Slimme WP Zacht Draaien Actief", True, "mdi:speedometer-slow", "core"),
     ("dhw_actief", "Slimme WP Tapwatersturing Actief", True, "mdi:water-boiler", "dhw"),
 ]
 
