@@ -15,6 +15,7 @@ SPECS = [
     ("uitlopen", "uitlopen", "Slimme WP Uitlopen (Niet Verwarmen)", "coasting", None),
     ("bivalent", "bivalent", "Slimme WP Onder Bivalent Punt", "bivalent", None),
     ("zacht_draaien", "zacht_draaien", "Slimme WP Zacht Draaien (Laag Vermogen)", "soft", None),
+    ("freq_begrensd", "freq_begrensd", "Slimme WP Frequentiegrens Actief", "freq_limited", None),
     ("sensor_probleem", "sensor_probleem", "Slimme WP Sensorprobleem", "sensor_problem",
      BinarySensorDeviceClass.PROBLEM),
 ]

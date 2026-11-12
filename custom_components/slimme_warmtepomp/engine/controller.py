@@ -93,6 +93,7 @@ class Decision:
     window_open: bool = False
     away: bool = False
     grid_limited: bool = False
+    freq_limited: bool = False         # setpoint limited by the maximum frequency setting
     soft: bool = False                 # setpoint held just above the return temperature (low frequency)
     cop_today: float | None = None
     cop_yesterday: float | None = None
@@ -558,6 +559,13 @@ class SmartController:
         if bedtime <= now:
             bedtime += timedelta(days=1)
 
+        # ---- frequency limit: translate max Hz (day / quiet hours) into a max gap above the return temp
+        def gap_cap_fn(t):
+            if not inp.modulation_enabled:
+                return None
+            fmax = s["max_freq_stil"] if quiet_fn(t) else s["max_freq_dag"]
+            return self.mod.gap_cap(fmax) if fmax > 0 else None
+
         # ---- plan
         plan_ok = inp.preheat_enabled and wl >= 0.3 and f_known
         pl = PlanResult()
@@ -572,7 +580,7 @@ class SmartController:
                     quiet_boost=s["stille_boost_max"], tol_low=s["tolerantie_laag"],
                     tol_high=s["tolerantie_hoog"], d_max=s["voorverwarm_max"],
                     bias=self.tracker.bias, hard_min_room=s["min_kamertemp"],
-                    allow_coast=True, mode=mode,
+                    allow_coast=True, mode=mode, gap_cap_fn=gap_cap_fn,
                     quiet_energy_mult=1.0 + 2.0 * s["stille_voorkeur"]))
                 self._plan_key = key
             pl = self._plan
@@ -619,6 +627,12 @@ class SmartController:
             raw = s_base(now, to_now, sun_fn(now), sp_now) + self.pi_i + kick + pv
             raw, soft = self._soft_running(raw, inp, s, now, e, pl.delta_now, tr, sp_now, in_quiet)
             d.soft = soft
+            cap = gap_cap_fn(now)
+            if cap is not None and not soft and inp.ret is not None and not emergency:
+                base_now = s_base(now, to_now, sun_fn(now), sp_now) + self.pi_i
+                limited = max(base_now, inp.ret + cap)
+                if raw > limited:
+                    raw, d.freq_limited = limited, True
             raw = _clamp(raw, S_MIN, s_max)
             if self._prev_s is not None and dt_h > 0:
                 lim = max(0.5, 12.0 * dt_h)
@@ -666,6 +680,7 @@ class SmartController:
             "geleerde_stooklijn": self._learned_curve(s),
             "modulatie_minimaal_verschil": self.mod.floor(),
             "modulatie_frequentie_op_minimum": self.mod.freq_at_floor(),
+            "frequentie_tabel": self.mod.table() or None,
         }
 
     def _learned_curve(self, s: dict):

@@ -56,6 +56,30 @@ class ModulationLearner:
         f = self.floor()
         return None if f is None else round(self.bins[_bin(f)][2], 1)
 
+    def trusted(self) -> list[tuple[float, float, float]]:
+        """(gap K, mean frequency Hz, mean thermal kW) of every trusted bin where the compressor ran."""
+        return sorted((k * BIN, v[2], v[3]) for k, v in self.bins.items()
+                      if v[0] >= MIN_N and v[1] >= 0.5 and v[2] > 0)
+
+    def gap_cap(self, f_max: float, margin: float = 0.25) -> float | None:
+        """Largest gap that keeps the compressor at or below ``f_max`` Hz.
+
+        None when there is no evidence that the limit would be exceeded (no cap needed or
+        not enough data yet): the controller then does not limit anything.
+        """
+        tb = self.trusted()
+        if len(tb) < 2 or f_max <= 0:
+            return None
+        ok = None
+        for gap, freq, _kw in tb:
+            if freq > f_max:
+                return max(0.0, (ok if ok is not None else gap) - margin)
+            ok = gap
+        return None
+
+    def table(self) -> dict:
+        return {f"{g:+.1f}": round(f) for g, f, _ in self.trusted()}
+
     def to_dict(self) -> dict:
         return {str(k): [round(x, 4) for x in v] for k, v in self.bins.items()}
 

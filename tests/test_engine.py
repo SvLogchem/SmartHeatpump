@@ -385,3 +385,47 @@ def test_modulation_state_survives_restart():
     c2 = SmartController()
     c2.import_state(c.export_state())
     assert c2.mod.floor() == 1.5
+
+
+# ---------------------------------------------------------------- frequentiegrens
+def _fill(c):
+    for _ in range(12):
+        c.mod.observe(1.0, True, 30.0, 2.0)     # small gap: 30 Hz holds the temperature
+        c.mod.observe(3.0, True, 50.0, 4.0)
+        c.mod.observe(5.0, True, 80.0, 6.5)     # large gap: boost at 80 Hz
+
+
+def test_gap_cap_follows_learned_frequency_table():
+    from engine.modulation import ModulationLearner
+    m = ModulationLearner()
+    assert m.gap_cap(50.0) is None                       # nothing learned: no cap
+    for _ in range(12):
+        m.observe(1.0, True, 30.0, 2.0); m.observe(3.0, True, 50.0, 4.0); m.observe(5.0, True, 80.0, 6.5)
+    assert m.gap_cap(50.0) == pytest.approx(3.0 - 0.25)
+    assert m.gap_cap(80.0) is None                       # nothing exceeds 80 Hz: no cap needed
+    assert m.gap_cap(0.0) is None                        # 0 = off
+    assert m.table() == {"+1.0": 30, "+3.0": 50, "+5.0": 80}
+
+
+def test_frequency_limit_caps_boost_in_quiet_hours_but_not_by_day_or_in_emergency():
+    quiet = datetime(2026, 11, 12, 22, 30, tzinfo=TZ)
+    day = datetime(2026, 11, 12, 14, 0, tzinfo=TZ)
+    kw = dict(room=20.6, ret=24.0, flow=28.0, freq=40.0, target_current=29.0)
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(quiet, **kw))
+    assert d.freq_limited and d.setpoint_raw < 29.0       # held at the house base level, no extra boost
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(day, **kw))
+    assert not d.freq_limited                                # 80 Hz allowed by day
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(quiet, **dict(kw, room=15.5)))
+    assert not d.freq_limited                                # emergency: comfort first
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(quiet, modulation_enabled=False, **kw))
+    assert not d.freq_limited
+
+
+def test_frequency_table_is_published_for_the_dashboard():
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(_t(0), room=21.0))
+    assert d.diag["frequentie_tabel"]["+5.0"] == 80
