@@ -1,53 +1,74 @@
 {
   "config": {
+    "title": "Slimme Warmtepomp",
     "step": {
       "user": {
-        "title": "Slimme Warmtepomp",
-        "description": "Configureer de instellingen en sensoren voor je slimme warmtepomp regeling.",
+        "title": "Configuratie Slimme Warmtepomp",
+        "description": "Koppel hier de entiteiten van jouw fysieke warmtepomp en sensoren aan de zelflerende regeling.",
         "data": {
-          "control_mode": "Stuurmodus (Aanvoer of Retour)",
-          "target_setpoint_entity": "Doel Setpoint Entiteit (Number)",
-          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar",
-          "flow_rate_sensor_1": "Waterstroom Sensor 1",
-          "flow_rate_sensor_2": "Waterstroom Sensor 2",
-          "power_sensor": "Elektrisch Vermogen Sensor (Optioneel)",
-          "voltage_sensor": "Spanning Sensor (Volt)",
-          "current_sensor": "Stroom Sensor (Ampère)",
-          "electricity_price_sensor": "Stroomprijzen Sensor",
-          "pv_power_sensor": "P1 Teruglevering Sensor (Zonnepanelen)",
-          "dhw_status_sensor": "Tapwater (DHW) Status Sensor",
-          "room_temp_sensor": "Ruimtetemperatuur Sensor",
-          "outside_temp_sensor": "Buitentemperatuur Sensor",
-          "weather_entity": "Weer Entiteit (Voorspelling)",
-          "flow_temp_sensor": "Aanvoertemperatuur Sensor",
-          "return_temp_sensor": "Retourtemperatuur Sensor",
-          "compressor_freq_sensor": "Compressor Frequentie Sensor"
+          "room_temp_sensor": "Ruimtetemperatuur Sensor (sensor...)",
+          "outside_temp_sensor": "Buitentemperatuur Sensor (sensor...)",
+          "weather_entity": "Weersverwachting Entiteit (weather...)",
+          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar (switch...)",
+          "target_setpoint_entity": "Doeltemperatuur Warmtepomp (number/climate...)",
+          "control_mode": "Sturingsmethode (retour of aanvoer)",
+          "compressor_freq_sensor": "Compressor Frequentie (sensor... - optioneel)",
+          "return_temp_sensor": "Retourtemperatuur Water (sensor... - optioneel)",
+          "flow_temp_sensor": "Aanvoertemperatuur Water (sensor... - optioneel)",
+          "flow_rate_sensor_1": "Flow / Doorstroming Sensor 1 (optioneel)",
+          "flow_rate_sensor_2": "Flow / Doorstroming Sensor 2 (optioneel)",
+          "power_sensor": "Elektrisch Vermogen (W) Sensor (optioneel)",
+          "voltage_sensor": "Voltage (V) Sensor (optioneel, indien geen vermogenssensor)",
+          "current_sensor": "Stroomsterkte (A) Sensor (optioneel, indien geen vermogenssensor)",
+          "electricity_price_sensor": "Actuele Stroomprijs (sensor... - optioneel)"
         }
       }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken",
+      "invalid_auth": "Ongeldige authenticatie",
+      "unknown": "Onverwachte fout opgetreden"
+    },
+    "abort": {
+      "already_configured": "Deze Slimme Warmtepomp is al geconfigureerd"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Slimme Warmtepomp Opties",
+        "title": "Instellingen Slimme Warmtepomp",
+        "description": "Pas de gekoppelde entiteiten van de warmtepomp aan.",
         "data": {
-          "control_mode": "Stuurmodus (Aanvoer of Retour)",
-          "target_setpoint_entity": "Doel Setpoint Entiteit (Number)",
-          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar",
-          "flow_rate_sensor_1": "Waterstroom Sensor 1",
-          "flow_rate_sensor_2": "Waterstroom Sensor 2",
-          "power_sensor": "Elektrisch Vermogen Sensor (Optioneel)",
-          "voltage_sensor": "Spanning Sensor (Volt)",
-          "current_sensor": "Stroom Sensor (Ampère)",
-          "electricity_price_sensor": "Stroomprijzen Sensor",
-          "pv_power_sensor": "P1 Teruglevering Sensor (Zonnepanelen)",
-          "dhw_status_sensor": "Tapwater (DHW) Status Sensor",
           "room_temp_sensor": "Ruimtetemperatuur Sensor",
           "outside_temp_sensor": "Buitentemperatuur Sensor",
-          "weather_entity": "Weer Entiteit (Voorspelling)",
-          "flow_temp_sensor": "Aanvoertemperatuur Sensor",
-          "return_temp_sensor": "Retourtemperatuur Sensor",
-          "compressor_freq_sensor": "Compressor Frequentie Sensor"
+          "weather_entity": "Weersverwachting Entiteit",
+          "heatpump_switch": "Warmtepomp Aan/Uit Schakelaar",
+          "target_setpoint_entity": "Doeltemperatuur Warmtepomp",
+          "control_mode": "Sturingsmethode (retour of aanvoer)",
+          "compressor_freq_sensor": "Compressor Frequentie (Hz)",
+          "return_temp_sensor": "Retourtemperatuur Water",
+          "flow_temp_sensor": "Aanvoertemperatuur Water",
+          "flow_rate_sensor_1": "Flow / Doorstroming Sensor 1",
+          "flow_rate_sensor_2": "Flow / Doorstroming Sensor 2",
+          "power_sensor": "Elektrisch Vermogen (W)",
+          "voltage_sensor": "Voltage (V)",
+          "current_sensor": "Stroomsterkte (A)",
+          "electricity_price_sensor": "Actuele Stroomprijs"
+        }
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "slimme_wp_thermostaat": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Dag": "Dagprogramma",
+              "Nacht": "Nachtprogramma",
+              "Handmatig": "Handmatig"
+            }
+          }
         }
       }
     }
