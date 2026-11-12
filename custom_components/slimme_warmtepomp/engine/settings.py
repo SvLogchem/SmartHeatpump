@@ -35,6 +35,11 @@ NUMBER_SPECS: list[tuple] = [
     ("prijs_gevoeligheid", "Slimme WP Prijsgevoeligheid", 0.0, 3.0, 0.1, "", 1.0, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),
     ("pv_drempel", "Slimme WP Zonnepanelen Drempel", 200.0, 8000.0, 100.0, "W", 1500.0, "core"),
+    # --- open ramen/deuren, aanwezigheid, netlimiet (optioneel) ---
+    ("raam_vertraging", "Slimme WP Raam Open Vertraging", 1.0, 30.0, 1.0, "min", 5.0, "window"),
+    ("afwezig_setpoint", "Slimme WP Setpoint Afwezig", 10.0, 20.0, 0.5, "°C", 17.0, "away"),
+    ("afwezig_vertraging", "Slimme WP Afwezig Vertraging", 5.0, 240.0, 5.0, "min", 30.0, "away"),
+    ("netimport_limiet", "Slimme WP Netimport Limiet (0 = uit)", 0.0, 15000.0, 100.0, "W", 3000.0, "grid"),
     # --- warm tapwater (optioneel) ---
     ("dhw_min_temp", "Slimme WP Tapwater Minimum", 25.0, 60.0, 1.0, "°C", 40.0, "dhw"),
     ("dhw_doel_temp", "Slimme WP Tapwater Doel", 30.0, 65.0, 1.0, "°C", 50.0, "dhw"),

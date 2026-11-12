@@ -30,6 +30,16 @@ Verplicht: kamer- en buitentemperatuur. Voor het leren heb je daarnaast de **ret
 
 Controleer na een paar dagen de sensoren *Modelvertrouwen*, *Voorspelde Kamer 1u Na Bedtijd* en *Avond Correctie*, en de attributen van *Berekend Setpoint* (o.a. `plan_reden`, geleerde tijdconstanten).
 
+## Optionele extra functies (v2.1)
+
+Alles hieronder is optioneel: koppel je de sensor niet, dan bestaan de bijbehorende entiteiten niet.
+
+- **Raam/deur open** (`open_sensors`): na `raam_vertraging` minuten (standaard 5) stopt de verwarming (uitlopen, reden `raam_open`). Tijdens open ramen leert het model niet, zodat de huismeting niet vervuild raakt. Bij echte nood (kamer onder minimum) wordt toch verwarmd. Entiteit: `binary_sensor.slimme_wp_raam_open`.
+- **Aanwezigheid / vakantie** (`presence_entities`, `holiday_entity`, `return_time_entity`): is iedereen weg (of staat vakantie aan) langer dan `afwezig_vertraging`, dan geldt `afwezig_setpoint`. Met een terugkomsttijd (input_datetime) verwarmt de planner op tijd voor; een handmatige keuze wint altijd. Entiteit: `binary_sensor.slimme_wp_afwezig`.
+- **Netimport-limiet** (`grid_power_sensor`, `netimport_limiet` in W, 0 = uit): blijft de import 5 minuten boven de limiet, dan wordt de warmtepomp tijdelijk niet extra belast (max. 45 min, daarna 15 min pauze, vrijgave onder 80 % van de limiet). Piekjes zoals koken worden genegeerd. Entiteit: `binary_sensor.slimme_wp_netlimiet`.
+- **COP en starts per dag**: `sensor.slimme_wp_cop_vandaag`, `..._cop_gisteren`, `..._starts_vandaag`, `..._starts_gisteren`. Veel starts per dag betekent korte-cycli; dat kun je met minimale draaitijd verbeteren.
+- **Geleerde stooklijn**: attribuut `geleerde_stooklijn` (aanvoertemperatuur bij -5/0/5/10/15 °C buiten), alleen zichtbaar als het model betrouwbaar is.
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.

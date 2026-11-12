@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers import selector
 
 from .const import (
-    CONF_CONTROL_MODE, CONF_CURRENT, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
+    CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
     CONF_FLOW, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FREQ, CONF_OUTSIDE, CONF_POWER, CONF_PRICE,
     CONF_PV, CONF_RETURN, CONF_ROOM, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
     DOMAIN,
@@ -23,7 +23,7 @@ WEATHER = selector.EntitySelectorConfig(domain=["weather"])
 REQUIRED = [CONF_ROOM, CONF_OUTSIDE]
 OPTIONAL_SENSORS = [
     CONF_RETURN, CONF_FLOW, CONF_FLOOR, CONF_FREQ, CONF_POWER, CONF_VOLTAGE, CONF_CURRENT,
-    CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_PRICE, CONF_PV, CONF_DHW_TEMP,
+    CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_PRICE, CONF_PV, CONF_GRID, CONF_DHW_TEMP,
 ]
 
 
@@ -50,6 +50,13 @@ def _schema(cur: dict[str, Any] | None = None) -> vol.Schema:
     for key in OPTIONAL_SENSORS[:-1]:
         fields[opt(key)] = selector.EntitySelector(SENSOR)
     fields[opt(CONF_WEATHER)] = selector.EntitySelector(WEATHER)
+    fields[opt(CONF_OPEN_SENSORS)] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=["binary_sensor"], multiple=True))
+    fields[opt(CONF_PRESENCE)] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=["person", "device_tracker", "binary_sensor", "input_boolean"], multiple=True))
+    fields[opt(CONF_HOLIDAY)] = selector.EntitySelector(selector.EntitySelectorConfig(domain=["input_boolean", "switch"]))
+    fields[opt(CONF_RETURN_TIME)] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=["input_datetime", "sensor"]))
     fields[opt(CONF_DHW_TEMP)] = selector.EntitySelector(SENSOR)
     fields[opt(CONF_DHW_SWITCH)] = selector.EntitySelector(SWITCHES)
     fields[opt(CONF_DHW_SETPOINT)] = selector.EntitySelector(SETTERS)
@@ -57,7 +64,7 @@ def _schema(cur: dict[str, Any] | None = None) -> vol.Schema:
 
 
 def _clean(user_input: dict[str, Any]) -> dict[str, Any]:
-    data = {k: v for k, v in user_input.items() if v not in (None, "")}
+    data = {k: v for k, v in user_input.items() if v not in (None, "", [])}
     data[CONF_STEP] = float(data.get(CONF_STEP, 1.0))
     return data
 

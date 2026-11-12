@@ -26,7 +26,12 @@
           "pv_power_sensor": "Zonnepaneelvermogen (sensor)",
           "dhw_temp_sensor": "Tapwatervat temperatuur (sensor)",
           "dhw_switch": "Tapwater aanvragen (switch)",
-          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)"
+          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)",
+          "open_sensors": "Ramen en deuren (sensoren)",
+          "presence_entities": "Aanwezigheid (personen/trackers)",
+          "holiday_entity": "Vakantiemodus (schakelaar)",
+          "return_time_entity": "Verwachte terugkomst (datum/tijd)",
+          "grid_power_sensor": "Netimport (sensor, W)"
         },
         "data_description": {
           "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
@@ -49,7 +54,12 @@
           "pv_power_sensor": "Optioneel. Bij overschot wordt goedkoper/gratis warmte in de vloer opgeslagen.",
           "dhw_temp_sensor": "Optioneel. Alleen invullen als de warmtepomp ook warm tapwater maakt; zet de tapwaterfunctie aan.",
           "dhw_switch": "Schakelaar die een tapwatercyclus start/stopt.",
-          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet."
+          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet.",
+          "open_sensors": "Optioneel. Staat er langer dan de ingestelde tijd iets open, dan pauzeert het stoken (met vorstbeveiliging) en wordt er niet van geleerd.",
+          "presence_entities": "Optioneel. Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
+          "holiday_entity": "Optioneel. Staat deze aan, dan geldt altijd het afwezig-setpoint.",
+          "return_time_entity": "Optioneel, bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd.",
+          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming)."
         }
       },
       "reconfigure": {
@@ -76,7 +86,12 @@
           "pv_power_sensor": "Zonnepaneelvermogen (sensor)",
           "dhw_temp_sensor": "Tapwatervat temperatuur (sensor)",
           "dhw_switch": "Tapwater aanvragen (switch)",
-          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)"
+          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)",
+          "open_sensors": "Ramen en deuren (sensoren)",
+          "presence_entities": "Aanwezigheid (personen/trackers)",
+          "holiday_entity": "Vakantiemodus (schakelaar)",
+          "return_time_entity": "Verwachte terugkomst (datum/tijd)",
+          "grid_power_sensor": "Netimport (sensor, W)"
         },
         "data_description": {
           "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
@@ -99,7 +114,12 @@
           "pv_power_sensor": "Optioneel. Bij overschot wordt goedkoper/gratis warmte in de vloer opgeslagen.",
           "dhw_temp_sensor": "Optioneel. Alleen invullen als de warmtepomp ook warm tapwater maakt; zet de tapwaterfunctie aan.",
           "dhw_switch": "Schakelaar die een tapwatercyclus start/stopt.",
-          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet."
+          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet.",
+          "open_sensors": "Optioneel. Staat er langer dan de ingestelde tijd iets open, dan pauzeert het stoken (met vorstbeveiliging) en wordt er niet van geleerd.",
+          "presence_entities": "Optioneel. Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
+          "holiday_entity": "Optioneel. Staat deze aan, dan geldt altijd het afwezig-setpoint.",
+          "return_time_entity": "Optioneel, bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd.",
+          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming)."
         }
       }
     },

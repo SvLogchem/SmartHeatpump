@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CONTROL_MODE, CONF_CURRENT, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
+    CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
     CONF_FLOW, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FREQ, CONF_OUTSIDE, CONF_POWER, CONF_PRICE,
     CONF_PV, CONF_RETURN, CONF_ROOM, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
     DOMAIN, FORECAST_REFRESH_MIN, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN,
@@ -57,6 +57,17 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
     @property
     def has_dhw(self) -> bool:
         return bool(self.cfg.get(CONF_DHW_TEMP))
+
+    def group_enabled(self, group: str) -> bool:
+        """Optional entity groups only exist when the matching sensors are configured."""
+        cfg = self.cfg
+        return {
+            "core": True,
+            "dhw": bool(cfg.get(CONF_DHW_TEMP)),
+            "window": bool(cfg.get(CONF_OPEN_SENSORS)),
+            "away": bool(cfg.get(CONF_PRESENCE) or cfg.get(CONF_HOLIDAY)),
+            "grid": bool(cfg.get(CONF_GRID)),
+        }.get(group, False)
 
     # ------------------------------------------------------------------ storage
     async def async_load(self) -> None:
@@ -106,6 +117,37 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             return None
         unit = str(self._state(entity_id).attributes.get("unit_of_measurement", "")).strip().lower()
         return val * 1000.0 if unit in ("kw", "kilowatt") else val
+
+    def _windows_open(self) -> bool:
+        return any(
+            (st := self._state(eid)) is not None and st.state in ("on", "open")
+            for eid in self.cfg.get(CONF_OPEN_SENSORS) or []
+        )
+
+    def _away(self) -> bool:
+        """Away = holiday switch on, or presence entities known and none of them 'home'."""
+        cfg = self.cfg
+        holiday = self._state(cfg.get(CONF_HOLIDAY))
+        if holiday is not None and holiday.state == "on":
+            return True
+        known = [st for eid in cfg.get(CONF_PRESENCE) or []
+                 if (st := self._state(eid)) is not None and str(st.state).lower() not in _BAD]
+        return bool(known) and not any(st.state in ("home", "on") for st in known)
+
+    def _return_at(self, now: datetime) -> datetime | None:
+        st = self._state(self.cfg.get(CONF_RETURN_TIME))
+        if st is None or str(st.state).lower() in _BAD:
+            return None
+        val = str(st.state)
+        when = dt_util.parse_datetime(val)
+        if when is not None:
+            when = when.replace(tzinfo=now.tzinfo) if when.tzinfo is None else dt_util.as_local(when)
+        else:
+            t = dt_util.parse_time(val)
+            if t is None:
+                return None
+            when = datetime.combine(now.date(), t, tzinfo=now.tzinfo)
+        return when if when > now else None
 
     async def _refresh_forecast(self, now: datetime) -> None:
         entity = self.cfg.get(CONF_WEATHER)
@@ -178,6 +220,8 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             dhw_enabled=self.has_dhw and self.switches["dhw_actief"],
             preset=self.preset, manual_temp=self.manual_temp, switch_state=sw,
             target_current=target, setpoint_step=float(cfg.get(CONF_STEP, 1.0)),
+            windows_open=self._windows_open(), away=self._away(), return_at=self._return_at(now),
+            grid_import_w=self._watts(cfg.get(CONF_GRID)),
             settings=dict(self.settings),
         )
 

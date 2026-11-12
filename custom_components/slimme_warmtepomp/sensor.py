@@ -111,6 +111,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
                        lambda d: round(d.energy_thermal_kwh / d.energy_electric_kwh, 2)
                        if d.energy_electric_kwh > 1.0 else None, None, None, M, entity_suffix="cop_seizoen"),
     ]
+    entities += [
+        DecisionSensor(c, "cop_vandaag", "Slimme WP COP Vandaag", lambda d: d.cop_today, None, None, M,
+                       icon="mdi:chart-line", entity_suffix="cop_vandaag"),
+        DecisionSensor(c, "cop_gisteren", "Slimme WP COP Gisteren", lambda d: d.cop_yesterday, None, None, None,
+                       icon="mdi:chart-line", entity_suffix="cop_gisteren"),
+        DecisionSensor(c, "starts_vandaag", "Slimme WP Compressorstarts Vandaag", lambda d: d.starts_today, None,
+                       None, SensorStateClass.TOTAL_INCREASING, icon="mdi:counter", entity_suffix="starts_vandaag"),
+        DecisionSensor(c, "starts_gisteren", "Slimme WP Compressorstarts Gisteren", lambda d: d.starts_yesterday,
+                       None, None, None, icon="mdi:counter", entity_suffix="starts_gisteren"),
+    ]
     if c.has_dhw:
         entities.append(DecisionSensor(c, "tapwater_modus", "Slimme WP Tapwater Modus", _diag("tapwater_modus"),
                                        category=D, icon="mdi:water-boiler", entity_suffix="tapwater_modus"))

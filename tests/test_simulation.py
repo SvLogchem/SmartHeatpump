@@ -94,3 +94,12 @@ def test_survives_sensor_dropout_and_reload():
         return fresh.step(inp)
     sim2.run(1, apply=apply)
     assert all(15 < r["s"] < 45 for r in sim2.log)
+
+
+def test_learned_heating_curve_is_monotonic(run_v2):
+    ctrl, sim_log = run_v2
+    from engine.controller import Inputs
+    curve = ctrl._learned_curve({"setpoint_dag": 21.0})
+    assert curve is not None
+    vals = [curve[k] for k in ("-5", "0", "5", "10", "15")]
+    assert vals == sorted(vals, reverse=True) and vals[0] - vals[-1] > 2

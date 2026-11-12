@@ -26,7 +26,12 @@
           "pv_power_sensor": "Solar power (sensor)",
           "dhw_temp_sensor": "Hot water tank temperature (sensor)",
           "dhw_switch": "Request hot water (switch)",
-          "dhw_setpoint_entity": "Hot water target temperature (number)"
+          "dhw_setpoint_entity": "Hot water target temperature (number)",
+          "open_sensors": "Windows and doors (sensors)",
+          "presence_entities": "Presence (persons/trackers)",
+          "holiday_entity": "Holiday mode (switch)",
+          "return_time_entity": "Expected return (date/time)",
+          "grid_power_sensor": "Grid import (sensor, W)"
         },
         "data_description": {
           "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
@@ -49,7 +54,12 @@
           "pv_power_sensor": "Optional. With a surplus, cheaper/free heat is stored in the floor.",
           "dhw_temp_sensor": "Optional. Only fill in if the heat pump also makes hot water; enables the DHW function.",
           "dhw_switch": "Switch that starts/stops a hot water cycle.",
-          "dhw_setpoint_entity": "Optional: set to the wanted temperature during a cycle."
+          "dhw_setpoint_entity": "Optional: set to the wanted temperature during a cycle.",
+          "open_sensors": "Optional. If something stays open longer than the set time, heating pauses (with frost protection) and nothing is learned from that period.",
+          "presence_entities": "Optional. If nobody is home, the temperature drops to the away setpoint.",
+          "holiday_entity": "Optional. While on, the away setpoint always applies.",
+          "return_time_entity": "Optional, e.g. an input_datetime. Floor heating is slow: with a return time it pre-heats in time.",
+          "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection)."
         }
       },
       "reconfigure": {
@@ -76,7 +86,12 @@
           "pv_power_sensor": "Solar power (sensor)",
           "dhw_temp_sensor": "Hot water tank temperature (sensor)",
           "dhw_switch": "Request hot water (switch)",
-          "dhw_setpoint_entity": "Hot water target temperature (number)"
+          "dhw_setpoint_entity": "Hot water target temperature (number)",
+          "open_sensors": "Windows and doors (sensors)",
+          "presence_entities": "Presence (persons/trackers)",
+          "holiday_entity": "Holiday mode (switch)",
+          "return_time_entity": "Expected return (date/time)",
+          "grid_power_sensor": "Grid import (sensor, W)"
         },
         "data_description": {
           "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
@@ -99,7 +114,12 @@
           "pv_power_sensor": "Optional. With a surplus, cheaper/free heat is stored in the floor.",
           "dhw_temp_sensor": "Optional. Only fill in if the heat pump also makes hot water; enables the DHW function.",
           "dhw_switch": "Switch that starts/stops a hot water cycle.",
-          "dhw_setpoint_entity": "Optional: set to the wanted temperature during a cycle."
+          "dhw_setpoint_entity": "Optional: set to the wanted temperature during a cycle.",
+          "open_sensors": "Optional. If something stays open longer than the set time, heating pauses (with frost protection) and nothing is learned from that period.",
+          "presence_entities": "Optional. If nobody is home, the temperature drops to the away setpoint.",
+          "holiday_entity": "Optional. While on, the away setpoint always applies.",
+          "return_time_entity": "Optional, e.g. an input_datetime. Floor heating is slow: with a return time it pre-heats in time.",
+          "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection)."
         }
       }
     },

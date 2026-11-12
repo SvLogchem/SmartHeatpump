@@ -33,6 +33,13 @@ class SlimmeWarmtepompBinary(SlimmeWPEntity, BinarySensorEntity):
         return None if d is None else bool(getattr(d, self._field))
 
 
+OPTIONAL = [
+    ("window", "raam_open", "raam_open", "Slimme WP Raam Of Deur Open", "window_open", BinarySensorDeviceClass.WINDOW),
+    ("away", "afwezig", "afwezig", "Slimme WP Afwezig", "away", None),
+    ("grid", "netlimiet", "netlimiet", "Slimme WP Netlimiet Actief", "grid_limited", None),
+]
+
+
 class SlimmeWarmtepompDhwBusy(SlimmeWarmtepompBinary):
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, "dhw_bezig", "dhw_bezig", "Slimme WP Tapwater Bezig", "dhw_active", None)
@@ -43,4 +50,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = [SlimmeWarmtepompBinary(coordinator, *spec) for spec in SPECS]
     if coordinator.has_dhw:
         entities.append(SlimmeWarmtepompDhwBusy(coordinator))
+    entities += [SlimmeWarmtepompBinary(coordinator, *spec[1:]) for spec in OPTIONAL
+                 if coordinator.group_enabled(spec[0])]
     async_add_entities(entities)

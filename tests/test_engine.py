@@ -243,3 +243,95 @@ def test_shadow_mode_calculates_everything_but_sends_nothing():
 
 def test_default_compressor_threshold_matches_v1():
     assert DEFAULTS["min_freq"] == 2.0
+
+
+# ---------------------------------------------------------------- v2.1 features
+def _t(minutes=0):
+    return datetime(2026, 11, 12, 14, 0, tzinfo=TZ) + timedelta(minutes=minutes)
+
+
+def test_open_window_pauses_heating_after_delay_but_not_in_emergency():
+    c = SmartController()
+    c.step(_inp(_t(-90), room=20.9))                                        # compressor guard: running for a while already
+    d = c.step(_inp(_t(0), room=20.9, windows_open=True))
+    assert not d.window_open and d.reason != "raam_open"                    # delay not over yet
+    d = c.step(_inp(_t(10), room=20.9, windows_open=True))
+    assert d.window_open and d.coasting and d.reason == "raam_open"
+    d = c.step(_inp(_t(12), room=15.0, windows_open=True))                  # below minimum room temperature
+    assert not d.coasting
+    d = c.step(_inp(_t(14), room=20.9, windows_open=False))
+    assert not d.window_open
+
+
+def test_open_window_is_excluded_from_learning():
+    c = SmartController()
+    for i in range(0, 200, 6):
+        c.step(_inp(_t(i), room=20.5, windows_open=True))
+    assert c.model.windows_room == 0
+
+
+def test_away_lowers_setpoint_after_debounce_and_return_time_restores_it():
+    c = SmartController()
+    d = c.step(_inp(_t(0), away=True))
+    assert not d.away and d.room_setpoint == DEFAULTS["setpoint_dag"]       # debounce (30 min)
+    d = c.step(_inp(_t(40), away=True))
+    assert d.away and d.room_setpoint == DEFAULTS["afwezig_setpoint"]
+    ret = _t(40 + 24 * 60)
+    d = c.step(_inp(_t(41), away=True, return_at=_t(41) + timedelta(hours=6)))
+    assert d.room_setpoint == DEFAULTS["afwezig_setpoint"]
+    d = c.step(_inp(_t(42 + 6 * 60), away=True, return_at=_t(41) + timedelta(hours=6)))
+    assert d.room_setpoint == DEFAULTS["setpoint_dag"]                      # return time passed: normal again
+    d = c.step(_inp(_t(43 + 6 * 60), away=False))
+    assert not d.away
+    # an explicit manual choice always wins over away
+    c2 = SmartController()
+    c2.step(_inp(_t(0), away=True, preset="Handmatig", manual_temp=22.0))
+    d = c2.step(_inp(_t(40), away=True, preset="Handmatig", manual_temp=22.0))
+    assert d.room_setpoint == 22.0
+
+
+def test_grid_limiter_needs_sustained_overload_and_releases():
+    c = SmartController()
+    s = {"netimport_limiet": 3000.0}
+    c.step(_inp(_t(-90), room=20.9, settings=s))
+    d = c.step(_inp(_t(0), room=20.9, grid_import_w=4500.0, settings=s))
+    assert not d.grid_limited
+    d = c.step(_inp(_t(3), room=20.9, grid_import_w=4500.0, settings=s))
+    assert not d.grid_limited                                               # a short spike (cooking) is ignored
+    d = c.step(_inp(_t(7), room=20.9, grid_import_w=4500.0, settings=s))
+    assert d.grid_limited and d.coasting and d.reason == "netlimiet"
+    d = c.step(_inp(_t(20), room=20.9, grid_import_w=1000.0, settings=s))
+    assert not d.grid_limited
+    # never longer than 45 minutes, then a 15 minute pause
+    c = SmartController()
+    c.step(_inp(_t(-90), room=20.9, settings=s))
+    for m in (0, 6, 7):
+        c.step(_inp(_t(m), room=20.9, grid_import_w=4500.0, settings=s))
+    assert c.step(_inp(_t(30), room=20.9, grid_import_w=4500.0, settings=s)).grid_limited
+    assert not c.step(_inp(_t(55), room=20.9, grid_import_w=4500.0, settings=s)).grid_limited
+    # disabled with limit 0
+    assert not SmartController().step(_inp(_t(0), grid_import_w=9e9, settings={"netimport_limiet": 0.0})).grid_limited
+
+
+def test_daily_cop_and_compressor_starts():
+    c = SmartController()
+    t = _t(0)
+    c.step(_inp(t - timedelta(minutes=10), freq=0.0, power_w=0.0))          # known idle state before the first run
+    heating = [(40, 900.0)] * 5 + [(0, 0.0)] * 5          # one run: 10 minutes on at 900 W
+    for _ in range(3):                                      # three runs
+        for freq, w in heating:
+            c.step(_inp(t, freq=freq, power_w=w, flow_lh=900.0, flow=34.0, ret=29.0))
+            t += timedelta(minutes=2)
+    d = c.step(_inp(t, freq=0.0, power_w=0.0))
+    assert d.starts_today == 3
+    assert d.cop_today is None or d.cop_today > 1.0        # thermal / electric energy
+    nxt = c.step(_inp(t + timedelta(days=1), freq=0.0))
+    assert nxt.starts_today == 0 and nxt.starts_yesterday == 3
+    c2 = SmartController()
+    c2.import_state(c.export_state())
+    assert c2.yesterday == c.yesterday and c2.day_key == c.day_key
+
+
+def test_learned_curve_is_published_only_when_model_is_trusted():
+    c = SmartController()
+    assert c.step(_inp(_t(0))).diag["geleerde_stooklijn"] is None
