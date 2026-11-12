@@ -1,66 +1,46 @@
-"""Binary Sensor platform for Slimme Warmtepomp."""
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+"""Binary sensor platform."""
+from __future__ import annotations
+
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.const import EntityCategory
-from .const import DOMAIN
 
-class SlimmeWarmtepompDefrostSensor(BinarySensorEntity):
-    def __init__(self, hass, config_entry):
-        self.hass = hass
-        self._entry_id = config_entry.entry_id
-        self._attr_name = "Slimme WP Ontdooi Actief"
-        self.entity_id = "binary_sensor.slimme_wp_defrost"
-        self._attr_unique_id = f"{self._entry_id}_defrost"
-        self._attr_device_class = BinarySensorDeviceClass.HEAT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+from .entity import SlimmeWPEntity
 
-    @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
+# key (= unique_id suffix), entity_id suffix, name, decision field, device class
+SPECS = [
+    ("defrost", "defrost", "Slimme WP Ontdooi Actief", "defrost", BinarySensorDeviceClass.HEAT),
+    ("dure_stroom", "dure_stroom", "Slimme WP Blokkering Dure Stroom", "expensive", None),
+    ("zomermodus", "zomermodus", "Slimme WP Zomermodus (Stookgrens)", "summer", None),
+    ("voorverwarmen", "voorverwarmen", "Slimme WP Voorverwarmen Bezig", "preheating", None),
+    ("uitlopen", "uitlopen", "Slimme WP Uitlopen (Niet Verwarmen)", "coasting", None),
+    ("bivalent", "bivalent", "Slimme WP Onder Bivalent Punt", "bivalent", None),
+    ("sensor_probleem", "sensor_probleem", "Slimme WP Sensorprobleem", "sensor_problem",
+     BinarySensorDeviceClass.PROBLEM),
+]
 
-    @property
-    def is_on(self):
-        state = self.hass.states.get("sensor.slimme_wp_setpoint")
-        return state.attributes.get("ontdooi_actief", False) if state else False
 
-class SlimmeWarmtepompDureStroomSensor(BinarySensorEntity):
-    def __init__(self, hass, config_entry):
-        self.hass = hass
-        self._entry_id = config_entry.entry_id
-        self._attr_name = "Slimme WP Blokkering Dure Stroom"
-        self.entity_id = "binary_sensor.slimme_wp_dure_stroom"
-        self._attr_unique_id = f"{self._entry_id}_dure_stroom"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+class SlimmeWarmtepompBinary(SlimmeWPEntity, BinarySensorEntity):
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, key, suffix, name, field, device_class) -> None:
+        super().__init__(coordinator, key, name, f"binary_sensor.slimme_wp_{suffix}")
+        self._field = field
+        self._attr_device_class = device_class
 
     @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
+    def is_on(self) -> bool | None:
+        d = self.decision
+        return None if d is None else bool(getattr(d, self._field))
 
-    @property
-    def is_on(self):
-        state = self.hass.states.get("sensor.slimme_wp_setpoint")
-        return state.attributes.get("dure_stroom_actief", False) if state else False
 
-class SlimmeWarmtepompZomermodusSensor(BinarySensorEntity):
-    def __init__(self, hass, config_entry):
-        self.hass = hass
-        self._entry_id = config_entry.entry_id
-        self._attr_name = "Slimme WP Zomermodus (Stookgrens)"
-        self.entity_id = "binary_sensor.slimme_wp_zomermodus"
-        self._attr_unique_id = f"{self._entry_id}_zomermodus"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+class SlimmeWarmtepompDhwBusy(SlimmeWarmtepompBinary):
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "dhw_bezig", "dhw_bezig", "Slimme WP Tapwater Bezig", "dhw_active", None)
 
-    @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
 
-    @property
-    def is_on(self):
-        state = self.hass.states.get("sensor.slimme_wp_setpoint")
-        return state.attributes.get("zomermodus_actief", False) if state else False
-
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    async_add_entities([
-        SlimmeWarmtepompDefrostSensor(hass, config_entry),
-        SlimmeWarmtepompDureStroomSensor(hass, config_entry),
-        SlimmeWarmtepompZomermodusSensor(hass, config_entry)
-    ])
+async def async_setup_entry(hass, entry, async_add_entities):
+    coordinator = entry.runtime_data
+    entities = [SlimmeWarmtepompBinary(coordinator, *spec) for spec in SPECS]
+    if coordinator.has_dhw:
+        entities.append(SlimmeWarmtepompDhwBusy(coordinator))
+    async_add_entities(entities)

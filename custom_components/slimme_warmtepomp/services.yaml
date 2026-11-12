@@ -1,0 +1,3 @@
+reset_model:
+  name: Reset geleerd model
+  description: Wis het geleerde huis- en vloermodel en de avondcorrectie. Het model leert daarna opnieuw (enkele dagen).

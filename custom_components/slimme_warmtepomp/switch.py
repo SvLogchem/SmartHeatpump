@@ -1,40 +1,52 @@
-"""Switch platform for Slimme Warmtepomp."""
-from homeassistant.components.switch import SwitchEntity
-from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.const import EntityCategory
-from .const import DOMAIN
+"""Switch platform: feature toggles."""
+from __future__ import annotations
 
-class SlimmeWarmtepompRegelingSwitch(SwitchEntity, RestoreEntity):
-    def __init__(self, config_entry):
-        self._entry_id = config_entry.entry_id
-        self._attr_name = "Slimme Regeling Actief"
-        self.entity_id = "switch.slimme_wp_regeling_actief"
-        self._attr_unique_id = f"{self._entry_id}_regeling_actief"
-        self._attr_icon = "mdi:auto-fix"
-        self._attr_entity_category = EntityCategory.CONFIG
-        self._attr_is_on = True
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import EntityCategory
+from homeassistant.helpers.restore_state import RestoreEntity
+
+from .engine.settings import SWITCH_SPECS
+from .entity import SlimmeWPEntity
+
+
+class SlimmeWarmtepompSwitch(SlimmeWPEntity, SwitchEntity, RestoreEntity):
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, key, name, default, icon) -> None:
+        super().__init__(coordinator, key, name, f"switch.slimme_wp_{key}")
+        self._attr_icon = icon
+        self._default = default
 
     @property
-    def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": "Slimme Warmtepomp",
-            "manufacturer": "Custom HEMS",
-        }
+    def available(self) -> bool:
+        return True
 
-    async def async_added_to_hass(self):
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.switches.get(self._key, self._default)
+
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        last_state = await self.async_get_last_state()
-        if last_state is not None:
-            self._attr_is_on = last_state.state == "on"
+        last = await self.async_get_last_state()
+        if last is not None and last.state in ("on", "off"):
+            self.coordinator.switches[self._key] = last.state == "on"
 
-    async def async_turn_on(self, **kwargs):
-        self._attr_is_on = True
+    async def _set(self, value: bool) -> None:
+        self.coordinator.switches[self._key] = value
         self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
-    async def async_turn_off(self, **kwargs):
-        self._attr_is_on = False
-        self.async_write_ha_state()
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._set(True)
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    async_add_entities([SlimmeWarmtepompRegelingSwitch(config_entry)])
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._set(False)
+
+
+async def async_setup_entry(hass, entry, async_add_entities):
+    coordinator = entry.runtime_data
+    async_add_entities(
+        SlimmeWarmtepompSwitch(coordinator, key, name, default, icon)
+        for key, name, default, icon, group in SWITCH_SPECS
+        if group == "core" or coordinator.has_dhw
+    )

@@ -1,2 +1,31 @@
 """Constants for the Slimme Warmtepomp integration."""
 DOMAIN = "slimme_warmtepomp"
+VERSION = "2.0.0"
+
+CONF_ROOM = "room_temp_sensor"
+CONF_OUTSIDE = "outside_temp_sensor"
+CONF_FLOW = "flow_temp_sensor"
+CONF_RETURN = "return_temp_sensor"
+CONF_FLOOR = "floor_temp_sensor"
+CONF_FREQ = "compressor_freq_sensor"
+CONF_FLOW_RATE_1 = "flow_rate_sensor_1"
+CONF_FLOW_RATE_2 = "flow_rate_sensor_2"
+CONF_POWER = "power_sensor"
+CONF_VOLTAGE = "voltage_sensor"
+CONF_CURRENT = "current_sensor"
+CONF_WEATHER = "weather_entity"
+CONF_PRICE = "electricity_price_sensor"
+CONF_PV = "pv_power_sensor"
+CONF_TARGET = "target_setpoint_entity"
+CONF_SWITCH = "heatpump_switch"
+CONF_CONTROL_MODE = "control_mode"
+CONF_STEP = "setpoint_step"
+CONF_DHW_TEMP = "dhw_temp_sensor"
+CONF_DHW_SWITCH = "dhw_switch"
+CONF_DHW_SETPOINT = "dhw_setpoint_entity"
+
+SERVICE_RESET_MODEL = "reset_model"
+
+UPDATE_INTERVAL_MIN = 2
+FORECAST_REFRESH_MIN = 30
+SAVE_INTERVAL_MIN = 30

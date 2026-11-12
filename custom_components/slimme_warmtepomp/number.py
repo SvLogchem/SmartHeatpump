@@ -1,60 +1,55 @@
-"""Number platform for Slimme Warmtepomp."""
+"""Number platform: all tunable settings."""
+from __future__ import annotations
+
 from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.const import EntityCategory
-from .const import DOMAIN
+from homeassistant.helpers.restore_state import RestoreEntity
 
-NUMBERS = [
-    ("basis_temperatuur", "Slimme WP Basis Temperatuur", 15.0, 35.0, 0.5, "°C"),
-    ("setpoint_offset", "Slimme WP Setpoint Offset", -10.0, 10.0, 0.5, "°C"),
-    ("stooklijn", "Slimme WP Stooklijn Helling", 0.1, 1.5, 0.05, ""),
-    ("horizon", "Slimme WP Weersverwachting Horizon", 1.0, 12.0, 1.0, "h"),
-    ("zon_factor", "Slimme WP Zon Compensatie Factor", 0.0, 5.0, 0.1, ""),
-    ("bivalent_temp", "Slimme WP Bivalente Temperatuur", -10.0, 10.0, 0.5, "°C"),
-    ("minimum_runtime", "Slimme WP Minimale Draaitijd", 5.0, 60.0, 5.0, "min"),
-    ("waakhond_marge", "Slimme WP Waakhond Marge", 0.1, 2.0, 0.1, "°C"),
-    ("max_flow_temp", "Slimme WP Max Aanvoertemperatuur", 25.0, 60.0, 1.0, "°C"),
-    ("stookgrens", "Slimme WP Zomermodus Stookgrens", 10.0, 25.0, 0.5, "°C"),
-    ("max_stroomprijs", "Slimme WP Max Stroomprijs", 0.1, 1.0, 0.01, "€"),
-    ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C"),
-    ("setpoint_dag", "Slimme WP Setpoint Dag", 15.0, 25.0, 0.1, "°C"),
-    ("setpoint_nacht", "Slimme WP Setpoint Nacht", 15.0, 25.0, 0.1, "°C"),
-    ("dag_start", "Slimme WP Starttijd Dag", 0.0, 23.0, 1.0, "h"),
-    ("dag_eind", "Slimme WP Eindtijd Dag", 0.0, 23.0, 1.0, "h"),
-    ("nacht_start", "Slimme WP Starttijd Nacht", 0.0, 23.0, 1.0, "h"),
-    ("nacht_eind", "Slimme WP Eindtijd Nacht", 0.0, 23.0, 1.0, "h"),
-]
+from .engine.settings import NUMBER_SPECS
+from .entity import SlimmeWPEntity
 
-class SlimmeWarmtepompNumber(NumberEntity, RestoreEntity):
-    def __init__(self, config_entry, key, name, min_val, max_val, step, unit):
-        self._entry_id = config_entry.entry_id
-        self._key = key
-        self._attr_name = name
-        self.entity_id = f"number.slimme_wp_{key}"
-        self._attr_unique_id = f"{self._entry_id}_{key}"
-        self._attr_native_min_value = min_val
-        self._attr_native_max_value = max_val
+
+class SlimmeWarmtepompNumber(SlimmeWPEntity, NumberEntity, RestoreEntity):
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator, key, name, lo, hi, step, unit, default) -> None:
+        super().__init__(coordinator, key, name, f"number.slimme_wp_{key}")
+        self._attr_native_min_value = lo
+        self._attr_native_max_value = hi
         self._attr_native_step = step
-        self._attr_native_unit_of_measurement = unit if unit else None
-        self._attr_entity_category = EntityCategory.CONFIG
-        self._attr_mode = NumberMode.BOX  # <-- Forceert een strak invulvak in plaats van een schuifje
-        self._attr_native_value = min_val
+        self._attr_native_unit_of_measurement = unit or None
+        self._default = default
 
     @property
-    def device_info(self):
-        return {"identifiers": {(DOMAIN, self._entry_id)}, "name": "Slimme Warmtepomp", "manufacturer": "Custom HEMS"}
+    def available(self) -> bool:
+        return True  # settings stay editable even when a control cycle fails
 
-    async def async_added_to_hass(self):
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.settings.get(self._key, self._default)
+
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        last_state = await self.async_get_last_state()
-        if last_state and last_state.state not in ["unknown", "unavailable"]:
-            try: self._attr_native_value = float(last_state.state)
-            except ValueError: pass
+        last = await self.async_get_last_state()
+        if last is not None and last.state not in ("unknown", "unavailable"):
+            try:
+                value = float(last.state)
+            except ValueError:
+                value = self._default
+            self.coordinator.settings[self._key] = min(max(value, self._attr_native_min_value),
+                                                       self._attr_native_max_value)
 
     async def async_set_native_value(self, value: float) -> None:
-        self._attr_native_value = value
+        self.coordinator.settings[self._key] = value
         self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    entities = [SlimmeWarmtepompNumber(config_entry, *num) for num in NUMBERS]
-    async_add_entities(entities)
+
+async def async_setup_entry(hass, entry, async_add_entities):
+    coordinator = entry.runtime_data
+    async_add_entities(
+        SlimmeWarmtepompNumber(coordinator, key, name, lo, hi, step, unit, default)
+        for key, name, lo, hi, step, unit, default, group in NUMBER_SPECS
+        if group == "core" or coordinator.has_dhw
+    )
