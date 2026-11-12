@@ -18,6 +18,8 @@ from .prices import PriceCurve, PriceStats, weight_for
 from .settings import DEFAULTS
 from .solar import sun_gain
 
+DEFROST_SETTLE_MIN = 10   # minutes after a defrost during which flow/return are not trusted
+COP_MIN, COP_MAX = 0.5, 8.0  # anything outside is a measurement artefact, not a COP
 S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
 KP_PLANNED = 0.5       # the planner already anticipates; keep the reactive part gentle      # feedback on top of the model (K per K, K per K*h)
@@ -210,6 +212,7 @@ class SmartController:
         self._was_heating: bool | None = None
         self._stopped_at: datetime | None = None
         self._tgt_value: float | None = None
+        self._defrost_until: datetime | None = None
         self._tgt_since: datetime | None = None
         self._probe_until: datetime | None = None
         self._probe_next: datetime | None = None
@@ -386,6 +389,10 @@ class SmartController:
         heating = self._heating(inp, s["min_freq"])
         d.defrost = bool(heating and inp.flow is not None and inp.ret is not None
                          and inp.flow - inp.ret < -0.5)
+        # water temperatures are unreliable during and shortly after a defrost: no COP, no learning
+        if d.defrost:
+            self._defrost_until = now + timedelta(minutes=DEFROST_SETTLE_MIN)
+        settling = d.defrost or (self._defrost_until is not None and now < self._defrost_until)
         sun_now = sun_gain(now, inp.lat, inp.lon, inp.cloud_now)
         d.bivalent = to_now < s["bivalent_temp"]
         d.heating = heating and not d.defrost
@@ -393,7 +400,7 @@ class SmartController:
         d.shadow = not inp.regeling_actief
 
         power_w = inp.power_w or 0.0
-        if d.defrost or not heating or not inp.flow_lh or inp.flow is None or inp.ret is None:
+        if settling or not heating or not inp.flow_lh or inp.flow is None or inp.ret is None:
             d.thermal_kw = 0.0
         else:
             dtw = inp.flow - inp.ret
@@ -401,7 +408,7 @@ class SmartController:
         d.electric_w = round(power_w, 1)
         if d.thermal_kw > 0 and power_w > 10.0:
             cop = d.thermal_kw / (power_w / 1000.0)
-            d.cop = round(cop, 2) if 0.5 <= cop <= 12.0 else 0.0
+            d.cop = round(cop, 2) if COP_MIN <= cop <= COP_MAX else 0.0
         e_dt = min(dt_h, 0.1)
         self.energy_th += d.thermal_kw * e_dt
         self.energy_el += power_w / 1000.0 * e_dt
@@ -410,7 +417,7 @@ class SmartController:
         # ---- learn how the heat pump reacts to the gap between setpoint and return temperature
         if inp.target_current != self._tgt_value:
             self._tgt_value, self._tgt_since = inp.target_current, now
-        if (inp.target_current is not None and inp.ret is not None and inp.hvac_on and not d.defrost
+        if (inp.target_current is not None and inp.ret is not None and inp.hvac_on and not settling
                 and not self.dhw.active and not window_active and inp.switch_state != "off"
                 and self._tgt_since is not None and now - self._tgt_since >= timedelta(minutes=15)
                 and inp.learning_enabled):
@@ -472,7 +479,7 @@ class SmartController:
 
         # ---- learning
         if inp.learning_enabled:
-            valid = proxy_ok and inp.hvac_on and not d.defrost and not dhw_busy and not inp.windows_open
+            valid = proxy_ok and inp.hvac_on and not settling and not dhw_busy and not inp.windows_open
             self._learn(inp, valid, heating, f_meas, sun_now)
 
         # ---- summer mode (24h mean with hysteresis)
