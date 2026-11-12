@@ -255,7 +255,7 @@ class SlimmeWarmtepompSetpointSensor(SlimmeWarmtepompBaseSensor, RestoreEntity):
                 cop = round(self.calculated_thermisch_kw / (self.calculated_elektrisch_w / 1000.0), 2)
                 if 0.5 <= cop <= 12.0: self.calculated_cop = cop
 
-        self._state = round(ideal_setpoint, 1)
+        self._state = round(ideal_setpoint)
 
         regeling_switch = self.hass.states.get("switch.slimme_wp_regeling_actief")
         mag_aansturen = False if (regeling_switch and regeling_switch.state == "off") else True
