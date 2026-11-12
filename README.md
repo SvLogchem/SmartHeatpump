@@ -44,6 +44,15 @@ Alles hieronder is optioneel: koppel je de sensor niet, dan bestaan de bijbehore
 
 De frequentie van de pomp kan niet worden aangestuurd, maar het verschil tussen setpoint en retourtemperatuur wel, en daar bepaalt de pomp zelf zijn toerental uit. De integratie leert per verschil (stappen van 0,5 K) of de compressor blijft draaien en met welke frequentie en welk vermogen. Het *minimale verschil* waarbij de compressor nog draait wordt het vloerverschil. Als er weinig warmte nodig is (kamer op setpoint, geen voorverwarmen) houdt de regeling het setpoint op retour + dat minimum + `modulatie_marge`, zodat de pomp zacht blijft draaien in plaats van hard te draaien en te stoppen. Af en toe (hoogstens elke 2 uur, 30 minuten, alleen als de kamer boven setpoint zit) probeert hij 0,5 K lager om de kennis bij te houden. Zonder geleerde waarde doet de functie niets. Uitzetten kan met `switch.slimme_wp_modulatie_actief`; je ziet het aan `binary_sensor.slimme_wp_zacht_draaien` en de attributen `modulatie_minimaal_verschil` en `modulatie_frequentie_op_minimum` van `sensor.slimme_wp_setpoint`.
 
+## Frequentiegrens (dag en stille uren)
+
+De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert per verschil tussen setpoint en retour welke frequentie de pomp draait (`frequentie_tabel`, bijvoorbeeld +1 K = 30 Hz, +3 K = 50 Hz, +5 K = 80 Hz). Met `max_freq_dag` en `max_freq_stil` (Hz, 0 = uit) bepaal je hoe hard de pomp mag gaan. Daaruit volgt een maximaal verschil; het setpoint komt dan nooit hoger dan retour + dat verschil. Daarmee kan de pomp overdag kort hard draaien om de retour op te laden (bijvoorbeeld naar 28-29 °C) en daarna met het kleine verschil rustig laag blijven draaien (zie *Zacht draaien*), terwijl hij in de stille uren onder zijn lagere grens blijft.
+
+- De grens verhoogt of verlaagt de instelling in de pomp zelf niet. Staat daar een harde grens (bijvoorbeeld 50 Hz), dan leert de integratie ook niets boven die frequentie. Verhoog hem in het bedienpaneel stapsgewijs.
+- De grens beperkt alleen het extra opwarmen: het setpoint dat het huismodel nodig heeft om de temperatuur vast te houden blijft behouden. Bij nood (kamer ruim onder setpoint of onder het minimum) wordt de grens genegeerd.
+- Zolang er te weinig gegevens zijn, doet de grens niets. De planner houdt rekening met de grens bij het kiezen van het voorverwarmmoment.
+- Zichtbaar via `binary_sensor.slimme_wp_frequentiegrens_actief`.
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.

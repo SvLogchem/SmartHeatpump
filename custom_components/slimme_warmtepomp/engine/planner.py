@@ -62,6 +62,7 @@ class PlanInput:
     horizon_h: float = 14.0
     allow_precharge: bool = True
     allow_coast: bool = True
+    gap_cap_fn: Callable[[datetime], float | None] | None = None  # max (setpoint - floor) in K, from the frequency limit
 
 
 @dataclass
@@ -92,6 +93,7 @@ def plan(inp: PlanInput) -> PlanResult:
     sp = [inp.sp_fn(t) for t in times]
     price = [inp.price_fn(t) for t in times]
     quiet = [inp.quiet_fn(t) for t in times]
+    gcap = [inp.gap_cap_fn(t) if inp.gap_cap_fn else None for t in times]
     base = [min(max(inp.s_base_fn(times[i], to[i], sun[i], sp[i]), inp.s_min), inp.s_max) for i in range(n)]
 
     # --- deadline for pre-charging: bedtime or next rise of the comfort setpoint
@@ -130,6 +132,8 @@ def plan(inp: PlanInput) -> PlanResult:
                 if ts <= i < te:
                     s += min(delta, inp.quiet_boost) if quiet[i] else delta
                 s = min(max(s, s_min), s_max)
+                if gcap[i] is not None:      # frequency limit: never push harder than the pump may run
+                    s = min(s, max(base[i], f + gcap[i]))
                 if retour:
                     # unit supplies (setpoint + dT) water until the *return* reaches the setpoint
                     if s > f:
