@@ -429,3 +429,16 @@ def test_frequency_table_is_published_for_the_dashboard():
     c = SmartController(); _fill(c)
     d = c.step(_inp(_t(0), room=21.0))
     assert d.diag["frequentie_tabel"]["+5.0"] == 80
+
+
+def test_setpoint_never_below_pump_minimum_even_when_coasting_with_cold_return():
+    # cold floor / summer: return 15 C -> coast used to ask for 14 C, the pump only accepts 20
+    for room, ret in ((22.5, 15.0), (21.0, 15.0), (23.0, 17.5)):
+        c = SmartController()
+        c.step(_inp(_t(-90), room=room, ret=ret, flow=16.0))
+        d = c.step(_inp(_t(0), room=room, ret=ret, flow=16.0, outside=22.0))
+        assert d.setpoint_raw >= DEFAULTS["min_setpoint"]
+        assert d.setpoint is None or d.setpoint >= DEFAULTS["min_setpoint"]
+    c = SmartController()
+    d = c.step(_inp(_t(0), room=22.5, ret=15.0, settings={"min_setpoint": 24.0}))
+    assert d.setpoint_raw >= 24.0
