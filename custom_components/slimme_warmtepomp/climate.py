@@ -24,6 +24,7 @@ class SlimmeWarmtepompThermostaat(SlimmeWPEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
     )
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_translation_key = "slimme_wp_thermostaat"
     _attr_precision = 0.1
     _attr_target_temperature_step = 0.1
     _attr_min_temp = 15.0

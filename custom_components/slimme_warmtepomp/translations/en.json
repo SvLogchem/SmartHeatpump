@@ -148,5 +148,28 @@
       "name": "Reset learned model",
       "description": "Clear the learned house and floor model and the evening correction."
     }
+  },
+  "entity": {
+    "climate": {
+      "slimme_wp_thermostaat": {
+        "state_attributes": {
+          "hvac_action": {
+            "state": {
+              "heating": "Heating",
+              "fan": "Circulating",
+              "idle": "Standby",
+              "off": "Off"
+            }
+          },
+          "preset_mode": {
+            "state": {
+              "Dag": "Day program",
+              "Nacht": "Night program",
+              "Handmatig": "Manual"
+            }
+          }
+        }
+      }
+    }
   }
 }
