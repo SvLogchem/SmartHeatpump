@@ -637,3 +637,78 @@ def test_coil_state_persists():
     tr = CoilTracker(); _coil_series(tr, _t(0), -5.0, 38.0)
     other = CoilTracker(); other.from_dict(tr.to_dict())
     assert other.peak_ref == tr.peak_ref and other.n == 1
+
+
+# ---------------------------------------------------------------- frost protection
+def test_frost_keeps_the_pump_on_when_thermostat_is_off():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 3, 0, tzinfo=TZ)
+    d = c.step(_inp(t, hvac_on=False, outside=1.0))
+    assert d.frost and d.switch is None and d.setpoint == 20.0 and d.reason == "vorstbeveiliging"
+    d = c.step(_inp(t + timedelta(minutes=2), hvac_on=False, outside=1.0, switch_state="off"))
+    assert d.switch == "on" and d.frost_forced
+
+
+def test_frost_protection_can_be_disabled_and_respects_shadow_mode():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 3, 0, tzinfo=TZ)
+    assert c.step(_inp(t, hvac_on=False, outside=1.0, frost_enabled=False)).switch == "off"
+    c2 = SmartController()
+    d = c2.step(_inp(t, hvac_on=False, outside=1.0, switch_state="off", regeling_actief=False))
+    assert d.frost and d.switch is None
+
+
+def test_frost_threshold_is_adjustable_and_released_after_15_minutes():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 3, 0, tzinfo=TZ)
+    assert not c.step(_inp(t, hvac_on=False, outside=4.0)).frost             # default limit 3
+    assert c.step(_inp(t, hvac_on=False, outside=4.0, settings={"vorst_buiten": 5.0})).frost
+    assert c.step(_inp(t + timedelta(minutes=1), hvac_on=False, outside=2.0)).frost
+    assert c.step(_inp(t + timedelta(minutes=10), hvac_on=False, outside=6.0)).frost   # still held
+    assert not c.step(_inp(t + timedelta(minutes=27), hvac_on=False, outside=6.0)).frost
+
+
+def test_frost_when_return_water_stays_too_cold():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 12, 0, tzinfo=TZ)
+    assert not c.step(_inp(t, hvac_on=False, outside=10.0, ret=7.0)).frost
+    assert c.step(_inp(t + timedelta(minutes=6), hvac_on=False, outside=10.0, ret=7.0)).frost
+    assert c.step(_inp(t + timedelta(minutes=7), hvac_on=False, outside=10.0, ret=8.5)).frost   # hysteresis 1 K
+    assert not c.step(_inp(t + timedelta(minutes=8), hvac_on=False, outside=10.0, ret=9.5)).frost
+
+
+def test_frost_overrules_summer_mode_and_coasting_switch_off():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 12, 0, tzinfo=TZ)
+    for i in range(2):
+        d = c.step(_inp(t + timedelta(minutes=10 * i), outside=2.0, room=23.0, switch_state="on",
+                        settings={"stookgrens": 0.5}))
+    assert d.frost and d.switch != "off"
+
+
+# ---------------------------------------------------------------- never switch off around a defrost
+def test_hvac_off_waits_for_a_running_defrost_before_switching_off():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 12, 0, tzinfo=TZ)
+    d = c.step(_inp(t, hvac_on=False, freq=40.0, flow=20.0, ret=27.0))       # flow < return: defrost
+    assert d.defrost and d.defrost_hold and d.switch is None
+    d = c.step(_inp(t + timedelta(minutes=1), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert d.defrost_hold and d.switch is None and d.reason == "wacht_ontdooien"   # settling window
+    d = c.step(_inp(t + timedelta(minutes=30), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert d.switch == "off" and not d.defrost_hold
+
+
+def test_hvac_off_waits_when_a_defrost_is_expected_soon():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 6, 0, tzinfo=TZ)
+    for i in range(4):                                  # learn a 52 min cycle
+        base = t + timedelta(minutes=52 * i)
+        c.step(_inp(base, freq=40.0, flow=30.0, ret=27.0))
+        c.step(_inp(base + timedelta(minutes=1), freq=40.0, flow=20.0, ret=27.0))
+        c.step(_inp(base + timedelta(minutes=2), freq=40.0, flow=20.0, ret=27.0))
+        c.step(_inp(base + timedelta(minutes=3), freq=40.0, flow=30.0, ret=27.0))
+    last = t + timedelta(minutes=52 * 3)
+    soon = c.step(_inp(last + timedelta(minutes=47), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert soon.defrost_hold and soon.switch is None
+    later = c.step(_inp(last + timedelta(minutes=70), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert later.switch == "off"

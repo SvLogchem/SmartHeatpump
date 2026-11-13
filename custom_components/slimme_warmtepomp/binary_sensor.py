@@ -18,6 +18,7 @@ SPECS = [
     ("freq_begrensd", "freq_begrensd", "Slimme WP Frequentiegrens Actief", "freq_limited", None),
     ("ijsvorming_alarm", "ijsvorming_alarm", "Slimme WP Ijsvorming Vermoed", "ice_warning",
      BinarySensorDeviceClass.PROBLEM),
+    ("vorstbeveiliging", "vorstbeveiliging", "Slimme WP Vorstbeveiliging Actief", "frost", None),
     ("sensor_probleem", "sensor_probleem", "Slimme WP Sensorprobleem", "sensor_problem",
      BinarySensorDeviceClass.PROBLEM),
 ]
