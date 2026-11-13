@@ -158,7 +158,8 @@
               "heating": "Heating",
               "fan": "Circulating",
               "idle": "Standby",
-              "off": "Off"
+              "off": "Off",
+              "defrosting": "Defrosting"
             }
           },
           "preset_mode": {

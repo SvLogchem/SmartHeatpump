@@ -81,6 +81,8 @@ class SlimmeWarmtepompThermostaat(SlimmeWPEntity, ClimateEntity, RestoreEntity):
             return HVACAction.OFF
         if d is not None and d.switch_state == "off":
             return HVACAction.IDLE
+        if d is not None and d.defrost:
+            return getattr(HVACAction, "DEFROSTING", HVACAction.HEATING)   # "Ontdooien" in the thermostat
         if d is not None and d.heating:
             return HVACAction.HEATING
         return HVACAction.FAN

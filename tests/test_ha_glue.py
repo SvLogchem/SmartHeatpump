@@ -248,6 +248,12 @@ def test_hvac_action_matches_v1_wording(setup):
     run(c.async_request_refresh()); assert climate.hvac_action == A.HEATING
     h.states.set("sensor.freq", 0)
     run(c.async_request_refresh()); assert climate.hvac_action == A.FAN        # circuleren
+    h.states.set("sensor.freq", 40); h.states.set("switch.wp", "on")
+    run(c.async_request_refresh())
+    c.data.defrost = True
+    assert climate.hvac_action == A.DEFROSTING                                   # ontdooien
+    c.data.defrost = False
+    h.states.set("sensor.freq", 0)
     h.states.set("switch.wp", "off")
     run(c.async_request_refresh()); assert climate.hvac_action == A.IDLE       # stand-by
 

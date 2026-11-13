@@ -158,7 +158,8 @@
               "heating": "Verwarmen",
               "fan": "Circuleren",
               "idle": "Stand-by",
-              "off": "Uit"
+              "off": "Uit",
+              "defrosting": "Ontdooien"
             }
           },
           "preset_mode": {
