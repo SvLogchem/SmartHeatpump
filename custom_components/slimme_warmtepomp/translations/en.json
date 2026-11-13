@@ -32,7 +32,8 @@
           "holiday_entity": "Holiday mode (switch)",
           "return_time_entity": "Expected return (date/time)",
           "grid_power_sensor": "Grid import (sensor, W)",
-          "unit_outside_sensor": "Heat pump's own outdoor sensor (information only, optional)"
+          "unit_outside_sensor": "Heat pump's own outdoor sensor (information only, optional)",
+          "coil_sensor": "Heat pump coil/evaporator temperature (pg_temp, optional)"
         },
         "data_description": {
           "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
@@ -61,7 +62,8 @@
           "holiday_entity": "Optional. While on, the away setpoint always applies.",
           "return_time_entity": "Optional, e.g. an input_datetime. Floor heating is slow: with a return time it pre-heats in time.",
           "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection).",
-          "unit_outside_sensor": "Optional. The sensor on the heat pump's grille (can freeze) is NOT used for control, only to learn and display defrost behaviour."
+          "unit_outside_sensor": "Optional. The sensor on the heat pump's grille (can freeze) is NOT used for control, only to learn and display defrost behaviour.",
+          "coil_sensor": "Optional. Enables faster defrost detection and measures whether a defrost really melts the ice (coil should reach 25-45 °C). Two weak defrosts in a row raise an icing alert."
         }
       },
       "reconfigure": {
@@ -94,7 +96,8 @@
           "holiday_entity": "Holiday mode (switch)",
           "return_time_entity": "Expected return (date/time)",
           "grid_power_sensor": "Grid import (sensor, W)",
-          "unit_outside_sensor": "Heat pump's own outdoor sensor (information only, optional)"
+          "unit_outside_sensor": "Heat pump's own outdoor sensor (information only, optional)",
+          "coil_sensor": "Heat pump coil/evaporator temperature (pg_temp, optional)"
         },
         "data_description": {
           "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
@@ -123,7 +126,8 @@
           "holiday_entity": "Optional. While on, the away setpoint always applies.",
           "return_time_entity": "Optional, e.g. an input_datetime. Floor heating is slow: with a return time it pre-heats in time.",
           "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection).",
-          "unit_outside_sensor": "Optional. The sensor on the heat pump's grille (can freeze) is NOT used for control, only to learn and display defrost behaviour."
+          "unit_outside_sensor": "Optional. The sensor on the heat pump's grille (can freeze) is NOT used for control, only to learn and display defrost behaviour.",
+          "coil_sensor": "Optional. Enables faster defrost detection and measures whether a defrost really melts the ice (coil should reach 25-45 °C). Two weak defrosts in a row raise an icing alert."
         }
       }
     },

@@ -581,3 +581,59 @@ def test_icing_state_survives_restart_and_controller_publishes_it():
     assert c2.ice.cop_ref == 3.9 and c2.ice.ref_n == 4
     d = c2.step(_inp(_t(0), room=20.8))
     assert d.ice_level == "ok" and d.diag["ijsvorming"]["niveau"] == "ok"
+
+
+# ---------------------------------------------------------------- coil tracker (real pump data, Nov 2026)
+def _coil_series(tr, start, pre, peak, *, heating=True):
+    """pre-defrost drift, then a defrost whose coil rises to `peak` within ~2 minutes."""
+    t = start
+    for i in range(12):                       # 12 minutes of slow drift at `pre`
+        tr.update(t, pre + 0.1 * (i % 2), heating); t += timedelta(minutes=1)
+    seen = []
+    for v in (pre + 0.4 * (peak - pre), peak, pre + 0.7 * (peak - pre), 0.0, pre * 0.1):
+        seen.append(tr.update(t, v, heating)); t += timedelta(seconds=30)
+    for _ in range(8):
+        tr.update(t, -1.0, heating); t += timedelta(minutes=1)
+    return t, seen
+
+
+def test_coil_tracker_detects_a_defrost_and_measures_a_healthy_peak():
+    from engine.coil import CoilTracker
+    tr = CoilTracker()
+    _, seen = _coil_series(tr, _t(0), -5.0, 38.0)
+    assert seen[0] is True and tr.last_peak == pytest.approx(38.0)
+    assert tr.weak_streak == 0 and not tr.cold and tr.peak_ref == pytest.approx(38.0)
+
+
+def test_coil_tracker_weak_defrosts_build_a_streak_like_the_6_7_nov_icing_episode():
+    from engine.coil import CoilTracker
+    from engine.icing import IcingMonitor
+    tr, ic = CoilTracker(), IcingMonitor()
+    t = _t(0)
+    for peak in (1.3, 2.0):
+        t, _ = _coil_series(tr, t, -20.0, peak)
+    assert tr.weak_streak == 2 and tr.cold
+    ic.update(t, cop=0.0, heating=False, settling=False, defrost=False, unit_diff=None, outside=3.0,
+              freq_running=True, last_end=None, last_interval=None, mean_interval=None, n_defrosts=0,
+              since_last_min=None, coil_weak_streak=tr.weak_streak, coil_cold=tr.cold)
+    assert ic.level == "ijs" and "ontdooi_zwak" in ic.reasons and "coil_koud" in ic.reasons
+    t, _ = _coil_series(tr, t, -5.0, 36.0)
+    assert tr.weak_streak == 0
+
+
+def test_coil_tracker_ignores_normal_drift_and_non_heating():
+    from engine.coil import CoilTracker
+    tr = CoilTracker()
+    t = _t(0)
+    for i in range(60):
+        assert tr.update(t, -3.0 + 0.05 * i, True) is False; t += timedelta(minutes=1)
+    tr2 = CoilTracker()
+    _, seen = _coil_series(tr2, _t(0), -5.0, 38.0, heating=False)
+    assert not any(seen) and tr2.n == 0
+
+
+def test_coil_state_persists():
+    from engine.coil import CoilTracker
+    tr = CoilTracker(); _coil_series(tr, _t(0), -5.0, 38.0)
+    other = CoilTracker(); other.from_dict(tr.to_dict())
+    assert other.peak_ref == tr.peak_ref and other.n == 1

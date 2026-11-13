@@ -67,7 +67,13 @@ De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert 
   - `vaker`: ontdooien komt steeds sneller achter elkaar (interval onder 60 % van normaal);
   - `ontdooit_te_laat`: geen ontdooicyclus terwijl het koud is en de pomp al langer dan 2,2 keer het normale interval draait;
   - `pomp_sensor_koud`: de buitensensor van de pomp is meer dan 4 K kouder (t.o.v. de echte buitentemperatuur) dan direct na het ontdooien (alleen als die sensor is gekoppeld);
+  - `ontdooi_zwak`: de coil-temperatuur stijgt tijdens een ontdooi nauwelijks (piek onder 15 °C, of onder de helft van normaal). Eén zwakke ontdooi = `let_op`, twee achter elkaar = `ijs` (alleen met coil-sensor);
+  - `coil_koud`: de coil is vlak voor het ontdooien kouder dan −12 °C (veel ijs; alleen met coil-sensor);
   - `kritiek`: COP onder 1,6 gedurende 15 minuten terwijl de compressor draait.
+
+### Coil-sensor (optioneel, aanbevolen)
+
+Koppel in de opties de coil-/verdampertemperatuur van de pomp (bij Tuya vaak `pg_temp`). Die springt tijdens een ontdooi met tientallen graden en is daarmee een snellere ontdooi-detectie dan de watertemperaturen. De piek zegt of de ontdooi het ijs echt wegsmelt: gezond 25–45 °C, ineffectief 0–12 °C (`sensor.slimme_wp_ontdooipiek`). Uit echte data: met een te korte ontdooitijd (2 min) en te lage eindtemperatuur (8 °C) bleef de piek op 0,6–3 °C en vroor de pomp binnen uren dicht. De regeling verandert de ontdooi-instellingen van de pomp nooit zelf; ze waarschuwt alleen.
   Eén reden geeft `let_op`, twee of `kritiek` geeft `ijs`. Bij `ijs` verschijnt (hoogstens elke 12 uur) een melding in Home Assistant. De regeling kan de ontdooi-instellingen van de pomp niet zelf aanpassen: controleer interval, starttemperatuur en maximale ontdooitijd in het bedienpaneel.
 - De regeling leert dit relatief aan jouw installatie, er zijn geen vaste natuurkundige drempels, behalve de genoemde percentages. Pas na een paar ontdooicycli is er een referentie.
 
