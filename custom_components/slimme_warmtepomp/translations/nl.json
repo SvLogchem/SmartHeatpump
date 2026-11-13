@@ -148,5 +148,29 @@
       "name": "Reset geleerd model",
       "description": "Wis het geleerde huis- en vloermodel en de avondcorrectie."
     }
+  },
+  "entity": {
+    "climate": {
+      "slimme_wp_thermostaat": {
+        "state_attributes": {
+          "hvac_action": {
+            "state": {
+              "heating": "Verwarmen",
+              "fan": "Circuleren",
+              "idle": "Stand-by",
+              "off": "Uit",
+              "defrosting": "Ontdooien"
+            }
+          },
+          "preset_mode": {
+            "state": {
+              "Dag": "Dagprogramma",
+              "Nacht": "Nachtprogramma",
+              "Handmatig": "Handmatig"
+            }
+          }
+        }
+      }
+    }
   }
 }

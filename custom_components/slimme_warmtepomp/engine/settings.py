@@ -36,6 +36,7 @@ NUMBER_SPECS: list[tuple] = [
     ("prijs_gevoeligheid", "Slimme WP Prijsgevoeligheid", 0.0, 3.0, 0.1, "", 1.0, "core"),
     ("max_freq_dag", "Slimme WP Max Frequentie Dag (0 = uit)", 0.0, 120.0, 5.0, "Hz", 80.0, "core"),
     ("max_freq_stil", "Slimme WP Max Frequentie Stille Uren (0 = uit)", 0.0, 120.0, 5.0, "Hz", 50.0, "core"),
+    ("ontdooi_wachttijd", "Slimme WP Wachttijd Na Ontdooien", 0.0, 15.0, 1.0, "min", 3.0, "core"),
     ("modulatie_marge", "Slimme WP Modulatie Marge", 0.0, 2.0, 0.1, "°C", 0.3, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),
     ("pv_drempel", "Slimme WP Zonnepanelen Drempel", 200.0, 8000.0, 100.0, "W", 1500.0, "core"),

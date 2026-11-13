@@ -451,10 +451,10 @@ def test_no_absurd_cop_during_and_after_defrost():
     d = c.step(_inp(_t(0), flow=24.0, ret=29.0, **kw))            # defrost: water runs backwards
     assert d.defrost and d.cop == 0.0 and d.thermal_kw == 0.0
     # defrost is over, but the water is still settling: a 9 K spread would give COP > 10
-    d = c.step(_inp(_t(3), flow=38.0, ret=29.0, **kw))
+    d = c.step(_inp(_t(2), flow=38.0, ret=29.0, **kw))
     assert not d.defrost and d.cop == 0.0 and d.thermal_kw == 0.0
     # after the settling time a normal COP is reported again
-    d = c.step(_inp(_t(14), flow=34.0, ret=29.0, **kw))
+    d = c.step(_inp(_t(8), flow=34.0, ret=29.0, **kw))
     assert 2.0 < d.cop < 8.0
     # and nothing above the plausible maximum is ever reported
     d = c.step(_inp(_t(30), flow=40.0, ret=29.0, freq=40.0, power_w=300.0, flow_lh=900.0, room=20.8))

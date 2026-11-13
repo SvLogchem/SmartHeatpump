@@ -24,6 +24,7 @@ class SlimmeWarmtepompThermostaat(SlimmeWPEntity, ClimateEntity, RestoreEntity):
         | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
     )
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_translation_key = "slimme_wp_thermostaat"
     _attr_precision = 0.1
     _attr_target_temperature_step = 0.1
     _attr_min_temp = 15.0
@@ -80,6 +81,8 @@ class SlimmeWarmtepompThermostaat(SlimmeWPEntity, ClimateEntity, RestoreEntity):
             return HVACAction.OFF
         if d is not None and d.switch_state == "off":
             return HVACAction.IDLE
+        if d is not None and d.defrost:
+            return getattr(HVACAction, "DEFROSTING", HVACAction.HEATING)   # "Ontdooien" in the thermostat
         if d is not None and d.heating:
             return HVACAction.HEATING
         return HVACAction.FAN

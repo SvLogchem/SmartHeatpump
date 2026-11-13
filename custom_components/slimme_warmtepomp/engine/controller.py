@@ -18,7 +18,6 @@ from .prices import PriceCurve, PriceStats, weight_for
 from .settings import DEFAULTS
 from .solar import sun_gain
 
-DEFROST_SETTLE_MIN = 10   # minutes after a defrost during which flow/return are not trusted
 COP_MIN, COP_MAX = 0.5, 8.0  # anything outside is a measurement artefact, not a COP
 S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
@@ -391,7 +390,7 @@ class SmartController:
                          and inp.flow - inp.ret < -0.5)
         # water temperatures are unreliable during and shortly after a defrost: no COP, no learning
         if d.defrost:
-            self._defrost_until = now + timedelta(minutes=DEFROST_SETTLE_MIN)
+            self._defrost_until = now + timedelta(minutes=s["ontdooi_wachttijd"])
         settling = d.defrost or (self._defrost_until is not None and now < self._defrost_until)
         sun_now = sun_gain(now, inp.lat, inp.lon, inp.cloud_now)
         d.bivalent = to_now < s["bivalent_temp"]
