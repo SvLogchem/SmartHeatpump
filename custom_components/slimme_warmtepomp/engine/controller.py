@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from .dhw import DhwController
 from .model import HouseModel
 from .defrost import DefrostLearner
+from .coil import CoilTracker
 from .icing import IcingMonitor
 from .modulation import ModulationLearner
 from .planner import PlanInput, PlanResult, plan as run_plan
@@ -51,6 +52,7 @@ class Inputs:
     pv_w: float | None = None
     weather: list = field(default_factory=list)          # [(datetime, temp, cloud%|None)]
     cloud_now: float | None = None
+    coil_temp: float | None = None      # coil/evaporator temperature of the pump (optional)
     unit_outside: float | None = None   # the heat pump's own outdoor sensor (information only)
     lat: float = 52.0
     lon: float = 5.0
@@ -181,6 +183,7 @@ class SmartController:
         self.mod = ModulationLearner()
         self.defl = DefrostLearner()
         self.ice = IcingMonitor()
+        self.coil = CoilTracker()
         # persistent scalars
         self.pi_i = 0.0
         self.summer_mean: float | None = None
@@ -235,7 +238,7 @@ class SmartController:
     def export_state(self) -> dict:
         return {
             "model": self.model.to_dict(), "tracker": self.tracker.to_dict(),
-            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "ice": self.ice.to_dict(), "dhw": self.dhw.to_dict(),
+            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "ice": self.ice.to_dict(), "coil": self.coil.to_dict(), "dhw": self.dhw.to_dict(),
             "pi_i": self.pi_i, "summer_mean": self.summer_mean, "summer": self.summer,
             "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
             "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
@@ -252,6 +255,7 @@ class SmartController:
             self.mod.from_dict(d.get("mod", {}))
             self.defl.from_dict(d.get("defl", {}))
             self.ice.from_dict(d.get("ice", {}))
+            self.coil.from_dict(d.get("coil", {}))
             self.pi_i = float(d.get("pi_i", 0.0))
             self.summer_mean = d.get("summer_mean")
             self.summer = bool(d.get("summer", False))
@@ -397,8 +401,9 @@ class SmartController:
 
         # ---- bookkeeping: heating state, defrost, energy
         heating = self._heating(inp, s["min_freq"])
-        d.defrost = bool(heating and inp.flow is not None and inp.ret is not None
-                         and inp.flow - inp.ret < -0.5)
+        coil_defrost = self.coil.update(now, inp.coil_temp, heating)
+        d.defrost = bool(heating and (coil_defrost or (inp.flow is not None and inp.ret is not None
+                                                       and inp.flow - inp.ret < -0.5)))
         # water temperatures are unreliable during and shortly after a defrost: no COP, no learning
         dtw_now = (inp.flow - inp.ret) if inp.flow is not None and inp.ret is not None else None
         self.defl.update(now, d.defrost, dtw_now, heating, inp.unit_outside)
@@ -426,7 +431,8 @@ class SmartController:
                         unit_diff=unit_diff, outside=inp.outside, freq_running=heating,
                         last_end=self.defl.last_end, last_interval=self.defl.last_interval,
                         mean_interval=self.defl.interval, n_defrosts=self.defl.n,
-                        since_last_min=self.defl.minutes_since_last(now))
+                        since_last_min=self.defl.minutes_since_last(now),
+                        coil_weak_streak=self.coil.weak_streak, coil_cold=self.coil.cold)
         d.ice_level, d.ice_warning = self.ice.level, self.ice.level == "ijs"
         d.next_defrost_min = self.defl.minutes_until_next(now)
         e_dt = min(dt_h, 0.1)
@@ -709,6 +715,8 @@ class SmartController:
             "geleerde_stooklijn": self._learned_curve(s),
             "ontdooien": self.defl.summary(),
             "ijsvorming": self.ice.summary(),
+            "ontdooi_kwaliteit": self.coil.summary(),
+            "ontdooi_piek": self.coil.last_peak,
             "ontdooi_wachttijd_min": round(self.defl.wait_minutes(s["ontdooi_wachttijd"]), 1),
             "buiten_verschil_unit": self._unit_diff,
             "modulatie_minimaal_verschil": self.mod.floor(),

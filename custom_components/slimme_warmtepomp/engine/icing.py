@@ -13,6 +13,9 @@ Signals (each is learned relative to this installation, no fixed physics):
   ontdooit_te_laat no defrost for > 2.2 x the usual interval although it is cold and heating
   pomp_sensor_koud the pump's own outdoor sensor is > 4 K colder (relative to the real outside
                    temperature) than right after a defrost
+  ontdooi_zwak     the pump's coil temperature barely rises during a defrost (ice is not melted);
+                   two in a row = icing (needs the coil sensor)
+  coil_koud        coil colder than -12 degC right before a defrost (heavily iced)
   kritiek          COP below 1.6 for 15 minutes while the compressor runs
 """
 from __future__ import annotations
@@ -46,7 +49,8 @@ class IcingMonitor:
     def update(self, now: datetime, *, cop: float, heating: bool, settling: bool, defrost: bool,
                unit_diff: float | None, outside: float | None, freq_running: bool,
                last_end: datetime | None, last_interval: float | None, mean_interval: float | None,
-               n_defrosts: int, since_last_min: float | None) -> None:
+               n_defrosts: int, since_last_min: float | None,
+               coil_weak_streak: int = 0, coil_cold: bool = False) -> None:
         # a new defrost just ended: open the window in which the clean-coil COP is measured
         if last_end is not None and last_end != self._seen_end:
             self._close_post_window()
@@ -79,6 +83,10 @@ class IcingMonitor:
         if (unit_diff is not None and self.unit_ref is not None and not in_post and not defrost
                 and unit_diff < self.unit_ref - 4.0):
             reasons.append("pomp_sensor_koud")
+        if coil_weak_streak >= 1:
+            reasons.append("ontdooi_zwak")
+        if coil_cold:
+            reasons.append("coil_koud")
         critical = False
         if self.ema is not None and self.ema < 1.6 and freq_running and heating and not settling:
             self._low_since = self._low_since or now
@@ -88,7 +96,7 @@ class IcingMonitor:
         if critical:
             reasons.append("kritiek")
 
-        new = "ijs" if critical or len(reasons) >= 2 else "let_op" if reasons else "ok"
+        new = "ijs" if critical or coil_weak_streak >= 2 or len(reasons) >= 2 else "let_op" if reasons else "ok"
         if LEVELS.index(new) >= LEVELS.index(self.level):
             self.level, self.reasons = new, reasons
             self._hold_until = now + timedelta(minutes=30)

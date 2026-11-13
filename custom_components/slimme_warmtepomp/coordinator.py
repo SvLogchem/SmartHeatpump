@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_UNIT_OUTSIDE, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
+    CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_UNIT_OUTSIDE, CONF_COIL, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
     CONF_FLOW, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FREQ, CONF_OUTSIDE, CONF_POWER, CONF_PRICE,
     CONF_PV, CONF_RETURN, CONF_ROOM, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
     DOMAIN, FORECAST_REFRESH_MIN, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN,
@@ -215,6 +215,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             now=now,
             room=self._num(cfg.get(CONF_ROOM)), outside=outside,
             unit_outside=self._num(cfg.get(CONF_UNIT_OUTSIDE)),
+            coil_temp=self._num(cfg.get(CONF_COIL)),
             flow=self._num(cfg.get(CONF_FLOW)), ret=self._num(cfg.get(CONF_RETURN)),
             floor=self._num(cfg.get(CONF_FLOOR)), freq=self._num(cfg.get(CONF_FREQ)),
             power_w=power, flow_lh=flow_lh, tank=self._num(cfg.get(CONF_DHW_TEMP)),
@@ -284,6 +285,8 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         "vaker": "de pomp ontdooit steeds vaker",
         "ontdooit_te_laat": "de pomp ontdooit niet terwijl het koud is en hij al lang draait",
         "pomp_sensor_koud": "de buitensensor van de pomp is veel kouder dan de buitentemperatuur",
+        "ontdooi_zwak": "de ontdooicycli smelten het ijs niet weg (de coil wordt nauwelijks warm)",
+        "coil_koud": "de coil is vlak voor het ontdooien extreem koud (veel ijs)",
         "kritiek": "de COP is langdurig rond 1",
     }
 
