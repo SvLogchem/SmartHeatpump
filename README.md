@@ -68,6 +68,10 @@ Bij vorst mag de pomp niet volledig stilvallen (water in leidingen en buitenunit
 - **Melding en status:** een melding in Home Assistant als de beveiliging de pomp moest inschakelen, en `binary_sensor.slimme_wp_vorstbeveiliging`.
 - **Uitzetten:** `switch.slimme_wp_vorstbeveiliging_actief`. In schaduwmodus (regeling niet actief) wordt niets aangestuurd.
 
+### Nooit uitzetten rond een ontdooi
+
+De regeling zet de schakelaar van de pomp niet uit tijdens een ontdooicyclus, kort erna, of kort ervoor: dan blijft er ijs op de verdamper zitten en kan de pomp vastlopen. In plaats daarvan blijft de pomp circuleren op het laagste setpoint en wordt hij pas uitgezet als dat veilig is (reden `wacht_ontdooien`). Dit geldt voor thermostaat uit, zomermodus en uitlopen. Het uitstel geldt ook bij een ijsmelding, en in de laatste `number.slimme_wp_ontdooi_vooraf` minuten (standaard 8) voor de verwachte ontdooi (nadat 3 ontdooicycli zijn geleerd).
+
 ## Voorspelling van ontdooien en ijsvorming
 
 - **Voorspelling:** na 3 gemeten ontdooicycli toont `sensor.slimme_wp_volgende_ontdooi` hoeveel minuten het naar verwachting duurt tot de volgende ontdooicyclus (negatief = te laat). De interval volgt de recente cycli.

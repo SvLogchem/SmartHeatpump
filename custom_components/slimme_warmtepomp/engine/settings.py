@@ -14,6 +14,7 @@ NUMBER_SPECS: list[tuple] = [
     ("bivalent_temp", "Slimme WP Bivalente Temperatuur", -10.0, 10.0, 0.5, "°C", -5.0, "core"),
     ("vorst_buiten", "Slimme WP Vorstgrens Buiten", -10.0, 10.0, 0.5, "°C", 3.0, "core"),
     ("vorst_retour", "Slimme WP Vorstgrens Retour", 0.0, 20.0, 1.0, "°C", 8.0, "core"),
+    ("ontdooi_vooraf", "Slimme WP Niet Uitzetten Voor Ontdooi", 0.0, 20.0, 1.0, "min", 8.0, "core"),
     ("minimum_runtime", "Slimme WP Minimale Draaitijd", 5.0, 60.0, 5.0, "min", 15.0, "core"),
     ("minimum_stilstand", "Slimme WP Minimale Stilstandtijd", 1.0, 60.0, 1.0, "min", 10.0, "core"),
     ("waakhond_marge", "Slimme WP Waakhond Marge", 0.1, 2.0, 0.1, "°C", 0.5, "core"),

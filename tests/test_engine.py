@@ -684,3 +684,31 @@ def test_frost_overrules_summer_mode_and_coasting_switch_off():
         d = c.step(_inp(t + timedelta(minutes=10 * i), outside=2.0, room=23.0, switch_state="on",
                         settings={"stookgrens": 0.5}))
     assert d.frost and d.switch != "off"
+
+
+# ---------------------------------------------------------------- never switch off around a defrost
+def test_hvac_off_waits_for_a_running_defrost_before_switching_off():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 12, 0, tzinfo=TZ)
+    d = c.step(_inp(t, hvac_on=False, freq=40.0, flow=20.0, ret=27.0))       # flow < return: defrost
+    assert d.defrost and d.defrost_hold and d.switch is None
+    d = c.step(_inp(t + timedelta(minutes=1), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert d.defrost_hold and d.switch is None and d.reason == "wacht_ontdooien"   # settling window
+    d = c.step(_inp(t + timedelta(minutes=30), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert d.switch == "off" and not d.defrost_hold
+
+
+def test_hvac_off_waits_when_a_defrost_is_expected_soon():
+    c = SmartController()
+    t = datetime(2026, 11, 12, 6, 0, tzinfo=TZ)
+    for i in range(4):                                  # learn a 52 min cycle
+        base = t + timedelta(minutes=52 * i)
+        c.step(_inp(base, freq=40.0, flow=30.0, ret=27.0))
+        c.step(_inp(base + timedelta(minutes=1), freq=40.0, flow=20.0, ret=27.0))
+        c.step(_inp(base + timedelta(minutes=2), freq=40.0, flow=20.0, ret=27.0))
+        c.step(_inp(base + timedelta(minutes=3), freq=40.0, flow=30.0, ret=27.0))
+    last = t + timedelta(minutes=52 * 3)
+    soon = c.step(_inp(last + timedelta(minutes=47), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert soon.defrost_hold and soon.switch is None
+    later = c.step(_inp(last + timedelta(minutes=70), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
+    assert later.switch == "off"

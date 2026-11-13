@@ -103,6 +103,7 @@ class Decision:
     freq_limited: bool = False         # setpoint limited by the maximum frequency setting
     ice_level: str = "ok"             # ok / let_op / ijs (icing suspected)
     ice_warning: bool = False
+    defrost_hold: bool = False        # switch-off postponed: defrost running, just done or expected soon
     frost: bool = False               # frost protection active: the pump is never switched off
     frost_forced: bool = False        # ... and it had to be switched on
     next_defrost_min: float | None = None
@@ -445,6 +446,11 @@ class SmartController:
                         coil_weak_streak=self.coil.weak_streak, coil_cold=self.coil.cold)
         d.ice_level, d.ice_warning = self.ice.level, self.ice.level == "ijs"
         d.next_defrost_min = self.defl.minutes_until_next(now)
+        # Never switch the unit off in the middle of (or right before) a defrost: the ice stays on the
+        # coil and the pump may not be able to start again. Circulating is fine, so we coast instead.
+        soon = bool(heating and d.next_defrost_min is not None
+                    and -5.0 <= d.next_defrost_min <= s["ontdooi_vooraf"])
+        d.defrost_hold = bool(d.defrost or settling or self.ice.level != "ok" or soon)
         e_dt = min(dt_h, 0.1)
         self.energy_th += d.thermal_kw * e_dt
         self.energy_el += power_w / 1000.0 * e_dt
@@ -549,6 +555,9 @@ class SmartController:
                 d.setpoint = float(round(s["min_setpoint"]))
                 if inp.switch_state == "off":
                     d.switch, d.frost_forced = "on", True
+            elif d.defrost_hold and inp.switch_state == "on":
+                d.reason = "wacht_ontdooien"
+                d.setpoint = float(round(s["min_setpoint"]))
             elif inp.regeling_actief and inp.switch_state == "on":
                 d.switch = "off"
             self._finish(d, now)
@@ -700,7 +709,7 @@ class SmartController:
             if sw != self._last_switch:
                 (setattr(self, "_last_on", now) if sw == "on" else setattr(self, "_last_off", now))
                 self._last_switch = sw
-            off_wanted = (self.summer or (d.coasting and tr >= sp_now + s["waakhond_marge"])) and not d.frost
+            off_wanted = (self.summer or (d.coasting and tr >= sp_now + s["waakhond_marge"])) and not d.frost and not d.defrost_hold
             if d.frost and sw == "off":
                 d.switch, d.frost_forced = "on", True
             elif off_wanted and sw == "on":
