@@ -466,3 +466,36 @@ def test_defrost_period_is_not_learned_from():
     for i in range(0, 30, 6):
         c.step(_inp(_t(i), flow=24.0, ret=29.0, freq=40.0, room=20.8))
     assert c.model.windows_room == 0
+
+
+# ---------------------------------------------------------------- ontdooien leren
+def test_defrost_learner_measures_duration_interval_and_recovery():
+    from engine.defrost import DefrostLearner
+    dl = DefrostLearner()
+    t = _t(0)
+    for cycle in range(4):
+        for _ in range(10):                                   # normal heating, spread 5 K
+            dl.update(t, False, 5.0, True); t += timedelta(minutes=1)
+        for _ in range(2):                                    # 2 minutes of defrost
+            dl.update(t, True, -4.0, True, unit_temp=-3.0); t += timedelta(minutes=1)
+        dl.update(t, False, 12.0, True); t += timedelta(minutes=1)   # overshoot, water not settled
+        dl.update(t, False, 8.0, True); t += timedelta(minutes=1)
+        dl.update(t, False, 5.2, True); t += timedelta(minutes=1)    # settled
+    s = dl.summary()
+    assert s["aantal"] == 4 and 1.5 <= s["duur_min"] <= 2.5
+    assert s["interval_min"] and 12 <= s["interval_min"] <= 16
+    assert dl.rec_n == 4 and 1.0 <= dl.recovery <= 3.5
+    assert 1.0 <= dl.wait_minutes(3.0) <= 5.0
+    assert s["unit_buiten_temp"] == -3.0
+    d2 = DefrostLearner(); d2.from_dict(dl.to_dict())
+    assert d2.n == 4 and d2.last_start == dl.last_start
+
+
+def test_defrost_wait_uses_setting_until_enough_is_learned():
+    from engine.defrost import DefrostLearner
+    assert DefrostLearner().wait_minutes(3.0) == 3.0
+    c = SmartController()
+    d = c.step(_inp(_t(0), room=20.8))
+    assert d.diag["ontdooi_wachttijd_min"] == 3.0
+    c2 = SmartController(); c2.import_state(c.export_state())
+    assert c2.defl.n == 0

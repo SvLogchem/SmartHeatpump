@@ -31,7 +31,8 @@
           "presence_entities": "Presence (persons/trackers)",
           "holiday_entity": "Holiday mode (switch)",
           "return_time_entity": "Expected return (date/time)",
-          "grid_power_sensor": "Grid import (sensor, W)"
+          "grid_power_sensor": "Grid import (sensor, W)",
+          "unit_outside_sensor": "Heat pump's own outdoor sensor (information only, optional)"
         },
         "data_description": {
           "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
@@ -59,7 +60,8 @@
           "presence_entities": "Optional. If nobody is home, the temperature drops to the away setpoint.",
           "holiday_entity": "Optional. While on, the away setpoint always applies.",
           "return_time_entity": "Optional, e.g. an input_datetime. Floor heating is slow: with a return time it pre-heats in time.",
-          "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection)."
+          "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection).",
+          "unit_outside_sensor": "Optional. The sensor on the heat pump's grille (can freeze) is NOT used for control, only to learn and display defrost behaviour."
         }
       },
       "reconfigure": {
@@ -91,7 +93,8 @@
           "presence_entities": "Presence (persons/trackers)",
           "holiday_entity": "Holiday mode (switch)",
           "return_time_entity": "Expected return (date/time)",
-          "grid_power_sensor": "Grid import (sensor, W)"
+          "grid_power_sensor": "Grid import (sensor, W)",
+          "unit_outside_sensor": "Heat pump's own outdoor sensor (information only, optional)"
         },
         "data_description": {
           "room_temp_sensor": "Most representative indoor temperature, e.g. the living room.",
@@ -119,7 +122,8 @@
           "presence_entities": "Optional. If nobody is home, the temperature drops to the away setpoint.",
           "holiday_entity": "Optional. While on, the away setpoint always applies.",
           "return_time_entity": "Optional, e.g. an input_datetime. Floor heating is slow: with a return time it pre-heats in time.",
-          "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection)."
+          "grid_power_sensor": "Optional. Power drawn from the grid (positive = import). When the limit stays exceeded, heating pauses briefly (capacity tariff or battery protection).",
+          "unit_outside_sensor": "Optional. The sensor on the heat pump's grille (can freeze) is NOT used for control, only to learn and display defrost behaviour."
         }
       }
     },

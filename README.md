@@ -53,6 +53,11 @@ De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert 
 - Zolang er te weinig gegevens zijn, doet de grens niets. De planner houdt rekening met de grens bij het kiezen van het voorverwarmmoment.
 - Zichtbaar via `binary_sensor.slimme_wp_frequentiegrens_actief`.
 
+## Ontdooien leren en buitentemperatuur
+
+- De regeling leert uit de ontdooicycli hoe lang ontdooien duurt, hoe vaak het gebeurt en hoe lang het water daarna nodig heeft om weer stabiel te worden (verschil aanvoer-retour terug binnen 25 % van daarvoor). Na minimaal 3 metingen vervangt de geleerde wachttijd (1,25 x herstel + 0,5 min, tussen 1 en 10 min) de instelling `ontdooi_wachttijd` (standaard 3 min). Tijdens die wachttijd wordt geen COP berekend en leert het huismodel niet. Zichtbaar als attributen `ontdooien` (aantal, duur, interval, herstel) en `ontdooi_wachttijd_min` van `sensor.slimme_wp_setpoint`.
+- **Buitentemperatuur:** de verplichte buitensensor stuurt stooklijn, zomermodus en het huismodel. Gebruik daar een echte buitentemperatuur (weerstation, Buienradar of een sensor in de schaduw), niet de sensor op het rooster van de warmtepomp: die bevriest en koelt af door de verdamper. Is de gekozen buitensensor niet beschikbaar, dan gebruikt de integratie de huidige temperatuur van de weerentiteit. De sensor van de pomp zelf kun je optioneel koppelen bij *Buitentemperatuur van de warmtepomp zelf*; die wordt alleen getoond en gebruikt om te leren bij welke temperatuur de pomp ontdooit (`buiten_verschil_unit` en `unit_buiten_temp`).
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.

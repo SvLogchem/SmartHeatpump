@@ -31,7 +31,8 @@
           "presence_entities": "Aanwezigheid (personen/trackers)",
           "holiday_entity": "Vakantiemodus (schakelaar)",
           "return_time_entity": "Verwachte terugkomst (datum/tijd)",
-          "grid_power_sensor": "Netimport (sensor, W)"
+          "grid_power_sensor": "Netimport (sensor, W)",
+          "unit_outside_sensor": "Buitentemperatuur van de warmtepomp zelf (alleen informatie, optioneel)"
         },
         "data_description": {
           "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
@@ -59,7 +60,8 @@
           "presence_entities": "Optioneel. Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
           "holiday_entity": "Optioneel. Staat deze aan, dan geldt altijd het afwezig-setpoint.",
           "return_time_entity": "Optioneel, bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd.",
-          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming)."
+          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming).",
+          "unit_outside_sensor": "Optioneel. De buitensensor op het rooster van de pomp (kan bevriezen) wordt NIET gebruikt voor de regeling, alleen om ontdooien te leren en te tonen."
         }
       },
       "reconfigure": {
@@ -91,7 +93,8 @@
           "presence_entities": "Aanwezigheid (personen/trackers)",
           "holiday_entity": "Vakantiemodus (schakelaar)",
           "return_time_entity": "Verwachte terugkomst (datum/tijd)",
-          "grid_power_sensor": "Netimport (sensor, W)"
+          "grid_power_sensor": "Netimport (sensor, W)",
+          "unit_outside_sensor": "Buitentemperatuur van de warmtepomp zelf (alleen informatie, optioneel)"
         },
         "data_description": {
           "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
@@ -119,7 +122,8 @@
           "presence_entities": "Optioneel. Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
           "holiday_entity": "Optioneel. Staat deze aan, dan geldt altijd het afwezig-setpoint.",
           "return_time_entity": "Optioneel, bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd.",
-          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming)."
+          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming).",
+          "unit_outside_sensor": "Optioneel. De buitensensor op het rooster van de pomp (kan bevriezen) wordt NIET gebruikt voor de regeling, alleen om ontdooien te leren en te tonen."
         }
       }
     },
