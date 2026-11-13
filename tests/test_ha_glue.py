@@ -291,3 +291,22 @@ def test_optional_entities_absent_when_not_configured(setup):
     h, entry, c = setup
     ids = {e.entity_id for _, e in h.entities}
     assert "binary_sensor.slimme_wp_raam_open" not in ids and "number.slimme_wp_afwezig_setpoint" not in ids
+
+
+def test_icing_notification_is_sent_once_per_12_hours(setup):
+    import dataclasses
+    from datetime import timezone, timedelta
+    h, entry, c = setup
+    run(c.async_request_refresh())
+    h.services.calls.clear()
+    dec = dataclasses.replace(c.data, ice_level="ijs", ice_warning=True)
+    t0 = datetime.now(timezone.utc)
+    run(c._notify_icing(dec, t0))
+    run(c._notify_icing(dec, t0 + timedelta(hours=1)))
+    sent = [x for x in h.services.calls if x[0] == "persistent_notification"]
+    assert len(sent) == 1
+    run(c._notify_icing(dec, t0 + timedelta(hours=13)))
+    assert len([x for x in h.services.calls if x[0] == "persistent_notification"]) == 2
+    ids = {e.entity_id for _, e in h.entities}
+    assert {"sensor.slimme_wp_ijsvorming", "sensor.slimme_wp_volgende_ontdooi",
+            "binary_sensor.slimme_wp_ijsvorming_alarm"} <= ids

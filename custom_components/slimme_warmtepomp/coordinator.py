@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
+    CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_UNIT_OUTSIDE, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
     CONF_FLOW, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FREQ, CONF_OUTSIDE, CONF_POWER, CONF_PRICE,
     CONF_PV, CONF_RETURN, CONF_ROOM, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
     DOMAIN, FORECAST_REFRESH_MIN, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN,
@@ -199,13 +199,22 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             except (TypeError, ValueError):
                 cloud_now = None
 
+        # the outdoor sensor is required; when it is unavailable, fall back to the weather entity's temperature
+        outside = self._num(cfg.get(CONF_OUTSIDE))
+        if outside is None and weather is not None:
+            try:
+                outside = float(weather.attributes.get("temperature"))
+            except (TypeError, ValueError):
+                outside = None
+
         switch = self._state(cfg.get(CONF_SWITCH))
         sw = switch.state if switch is not None and switch.state in ("on", "off") else None
         target = self._num(cfg.get(CONF_TARGET))
 
         return Inputs(
             now=now,
-            room=self._num(cfg.get(CONF_ROOM)), outside=self._num(cfg.get(CONF_OUTSIDE)),
+            room=self._num(cfg.get(CONF_ROOM)), outside=outside,
+            unit_outside=self._num(cfg.get(CONF_UNIT_OUTSIDE)),
             flow=self._num(cfg.get(CONF_FLOW)), ret=self._num(cfg.get(CONF_RETURN)),
             floor=self._num(cfg.get(CONF_FLOOR)), freq=self._num(cfg.get(CONF_FREQ)),
             power_w=power, flow_lh=flow_lh, tank=self._num(cfg.get(CONF_DHW_TEMP)),
@@ -269,6 +278,31 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             if d.dhw_request and d.dhw_setpoint and cfg.get(CONF_DHW_SETPOINT):
                 await self._set_number(cfg[CONF_DHW_SETPOINT], d.dhw_setpoint)
 
+    ICE_TEXT = {
+        "cop_zakt": "de COP zakt ver onder het niveau direct na het ontdooien",
+        "herstelt_niet": "de COP na het ontdooien wordt steeds slechter (ontdooien lost het ijs niet op)",
+        "vaker": "de pomp ontdooit steeds vaker",
+        "ontdooit_te_laat": "de pomp ontdooit niet terwijl het koud is en hij al lang draait",
+        "pomp_sensor_koud": "de buitensensor van de pomp is veel kouder dan de buitentemperatuur",
+        "kritiek": "de COP is langdurig rond 1",
+    }
+
+    async def _notify_icing(self, decision: Decision, now) -> None:
+        """One persistent notification (at most every 12 hours) when the pump seems to be icing up."""
+        if decision.ice_level != "ijs":
+            return
+        last = getattr(self, "_ice_notified", None)
+        if last is not None and now - last < timedelta(hours=12):
+            return
+        self._ice_notified = now
+        reasons = ", ".join(self.ICE_TEXT.get(r, r) for r in decision.diag.get("ijsvorming", {}).get("redenen", []))
+        await self.hass.services.async_call("persistent_notification", "create", {
+            "title": "Warmtepomp: mogelijk ijsvorming",
+            "message": ("De slimme regeling vermoedt dat de warmtepomp ijs ophoopt: " + reasons + ". "
+                        "Controleer de ontdooi-instellingen van de pomp (interval, starttemperatuur, maximale "
+                        "ontdooitijd) en kijk of de verdamper vrij is van ijs."),
+            "notification_id": "slimme_warmtepomp_ijsvorming"}, blocking=False)
+
     async def _async_update_data(self) -> Decision:
         try:
             inp = await self._build_inputs()
@@ -276,6 +310,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
                 decision = await self.hass.async_add_executor_job(self.controller.step, inp)
             await self._execute(decision)
             now = dt_util.utcnow()
+            await self._notify_icing(decision, now)
             if self._saved_at is None or now - self._saved_at > timedelta(minutes=SAVE_INTERVAL_MIN):
                 await self.async_save()
             return decision

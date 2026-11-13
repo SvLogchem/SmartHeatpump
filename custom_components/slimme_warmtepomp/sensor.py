@@ -120,6 +120,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
                        None, SensorStateClass.TOTAL_INCREASING, icon="mdi:counter", entity_suffix="starts_vandaag"),
         DecisionSensor(c, "starts_gisteren", "Slimme WP Compressorstarts Gisteren", lambda d: d.starts_yesterday,
                        None, None, None, icon="mdi:counter", entity_suffix="starts_gisteren"),
+        DecisionSensor(c, "ijsvorming", "Slimme WP Ijsvorming", lambda d: d.ice_level, None, None, None,
+                       icon="mdi:snowflake-alert", entity_suffix="ijsvorming"),
+        DecisionSensor(c, "volgende_ontdooi", "Slimme WP Volgende Ontdooicyclus (Verwacht)",
+                       lambda d: d.next_defrost_min, UnitOfTime.MINUTES, None, None, D,
+                       icon="mdi:snowflake-melt", entity_suffix="volgende_ontdooi"),
     ]
     if c.has_dhw:
         entities.append(DecisionSensor(c, "tapwater_modus", "Slimme WP Tapwater Modus", _diag("tapwater_modus"),
