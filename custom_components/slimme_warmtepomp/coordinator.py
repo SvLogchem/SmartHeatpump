@@ -228,6 +228,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             preheat_enabled=self.switches["voorverwarmen_actief"],
             price_enabled=self.switches["prijssturing_actief"],
             modulation_enabled=self.switches["modulatie_actief"],
+            frost_enabled=self.switches["vorstbeveiliging_actief"],
             dhw_enabled=self.has_dhw and self.switches["dhw_actief"],
             preset=self.preset, manual_temp=self.manual_temp, switch_state=sw,
             target_current=target, setpoint_step=float(cfg.get(CONF_STEP, 1.0)),
@@ -290,6 +291,22 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         "kritiek": "de COP is langdurig rond 1",
     }
 
+    async def _notify_frost(self, decision: Decision, now) -> None:
+        """Tell the person when the frost protection had to switch the heat pump on."""
+        if not decision.frost_forced:
+            return
+        last = getattr(self, "_frost_notified", None)
+        if last is not None and (now - last).total_seconds() < 6 * 3600:
+            return
+        self._frost_notified = now
+        why = ("het water in de pomp is te koud" if self.controller.frost_reason == "water"
+               else "het buiten onder de vorstgrens is")
+        await self.hass.services.async_call("persistent_notification", "create", {
+            "title": "Warmtepomp: vorstbeveiliging",
+            "message": ("De vorstbeveiliging heeft de warmtepomp ingeschakeld omdat " + why + ". "
+                        "De pomp blijft draaien op het laagste setpoint zolang er vorstgevaar is."),
+            "notification_id": "slimme_warmtepomp_vorst"}, blocking=False)
+
     async def _notify_icing(self, decision: Decision, now) -> None:
         """One persistent notification (at most every 12 hours) when the pump seems to be icing up."""
         if decision.ice_level != "ijs":
@@ -314,6 +331,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             await self._execute(decision)
             now = dt_util.utcnow()
             await self._notify_icing(decision, now)
+            await self._notify_frost(decision, now)
             if self._saved_at is None or now - self._saved_at > timedelta(minutes=SAVE_INTERVAL_MIN):
                 await self.async_save()
             return decision

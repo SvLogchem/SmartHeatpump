@@ -58,6 +58,16 @@ De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert 
 - De regeling leert uit de ontdooicycli hoe lang ontdooien duurt, hoe vaak het gebeurt en hoe lang het water daarna nodig heeft om weer stabiel te worden (verschil aanvoer-retour terug binnen 25 % van daarvoor). Na minimaal 3 metingen vervangt de geleerde wachttijd (1,25 x herstel + 0,5 min, tussen 1 en 10 min) de instelling `ontdooi_wachttijd` (standaard 3 min). Tijdens die wachttijd wordt geen COP berekend en leert het huismodel niet. Zichtbaar als attributen `ontdooien` (aantal, duur, interval, herstel) en `ontdooi_wachttijd_min` van `sensor.slimme_wp_setpoint`.
 - **Buitentemperatuur:** de verplichte buitensensor stuurt stooklijn, zomermodus en het huismodel. Gebruik daar een echte buitentemperatuur (weerstation, Buienradar of een sensor in de schaduw), niet de sensor op het rooster van de warmtepomp: die bevriest en koelt af door de verdamper. Is de gekozen buitensensor niet beschikbaar, dan gebruikt de integratie de huidige temperatuur van de weerentiteit. De sensor van de pomp zelf kun je optioneel koppelen bij *Buitentemperatuur van de warmtepomp zelf*; die wordt alleen getoond en gebruikt om te leren bij welke temperatuur de pomp ontdooit (`buiten_verschil_unit` en `unit_buiten_temp`).
 
+## Vorstbeveiliging
+
+Bij vorst mag de pomp niet volledig stilvallen (water in leidingen en buitenunit kan bevriezen). De vorstbeveiliging houdt de pomp aan en draaiend op het laagste setpoint:
+
+- **Buiten:** onder `number.slimme_wp_vorst_buiten` (standaard 3 °C). Hij laat pas 15 minuten nadat het weer warmer is los, zodat de pomp niet gaat pendelen.
+- **Water:** als de retour 5 minuten onder `number.slimme_wp_vorst_retour` (standaard 8 °C) blijft; hij laat los boven die grens + 1 K.
+- **Effect:** de pomp wordt niet uitgezet, ook niet bij thermostaat uit, zomermodus of uitlopen. Staat hij uit, dan gaat hij aan. Het setpoint is `number.slimme_wp_min_setpoint` (standaard 20 °C).
+- **Melding en status:** een melding in Home Assistant als de beveiliging de pomp moest inschakelen, en `binary_sensor.slimme_wp_vorstbeveiliging`.
+- **Uitzetten:** `switch.slimme_wp_vorstbeveiliging_actief`. In schaduwmodus (regeling niet actief) wordt niets aangestuurd.
+
 ## Voorspelling van ontdooien en ijsvorming
 
 - **Voorspelling:** na 3 gemeten ontdooicycli toont `sensor.slimme_wp_volgende_ontdooi` hoeveel minuten het naar verwachting duurt tot de volgende ontdooicyclus (negatief = te laat). De interval volgt de recente cycli.

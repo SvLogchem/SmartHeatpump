@@ -62,6 +62,7 @@ class Inputs:
     learning_enabled: bool = True
     preheat_enabled: bool = True
     price_enabled: bool = True
+    frost_enabled: bool = True
     modulation_enabled: bool = True
     dhw_enabled: bool = False
     windows_open: bool = False            # any configured window/door sensor reports open
@@ -102,6 +103,8 @@ class Decision:
     freq_limited: bool = False         # setpoint limited by the maximum frequency setting
     ice_level: str = "ok"             # ok / let_op / ijs (icing suspected)
     ice_warning: bool = False
+    frost: bool = False               # frost protection active: the pump is never switched off
+    frost_forced: bool = False        # ... and it had to be switched on
     next_defrost_min: float | None = None
     soft: bool = False                 # setpoint held just above the return temperature (low frequency)
     cop_today: float | None = None
@@ -224,6 +227,11 @@ class SmartController:
         self._tgt_value: float | None = None
         self._defrost_until: datetime | None = None
         self._unit_diff: float | None = None
+        self._frost_cold = False
+        self._frost_water = False
+        self._frost_safe_since: datetime | None = None
+        self._ret_low_since: datetime | None = None
+        self.frost_reason: str | None = None
         self._tgt_since: datetime | None = None
         self._probe_until: datetime | None = None
         self._probe_next: datetime | None = None
@@ -361,6 +369,8 @@ class SmartController:
             d.reason = "sensor_ontbreekt"
             d.room_setpoint = self._last.room_setpoint if self._last else s["setpoint_dag"]
             return d
+
+        self._frost_check(inp, s, now, d)
 
         # ---- manual preset reverts at the next day/night switch
         if inp.preset == PROGRAM_MANUAL:
@@ -534,7 +544,12 @@ class SmartController:
         # ---- states in which we do not touch space heating
         if not inp.hvac_on:
             d.reason = "uit"
-            if inp.regeling_actief and inp.switch_state == "on":
+            if d.frost:
+                d.reason = "vorstbeveiliging"
+                d.setpoint = float(round(s["min_setpoint"]))
+                if inp.switch_state == "off":
+                    d.switch, d.frost_forced = "on", True
+            elif inp.regeling_actief and inp.switch_state == "on":
                 d.switch = "off"
             self._finish(d, now)
             return d
@@ -685,8 +700,10 @@ class SmartController:
             if sw != self._last_switch:
                 (setattr(self, "_last_on", now) if sw == "on" else setattr(self, "_last_off", now))
                 self._last_switch = sw
-            off_wanted = self.summer or (d.coasting and tr >= sp_now + s["waakhond_marge"])
-            if off_wanted and sw == "on":
+            off_wanted = (self.summer or (d.coasting and tr >= sp_now + s["waakhond_marge"])) and not d.frost
+            if d.frost and sw == "off":
+                d.switch, d.frost_forced = "on", True
+            elif off_wanted and sw == "on":
                 if self._last_on is None or now - self._last_on >= timedelta(minutes=s["minimum_runtime"]):
                     d.switch = "off"
             elif not off_wanted and sw == "off":
@@ -694,6 +711,30 @@ class SmartController:
                     d.switch = "on"
         self._finish(d, now)
         return d
+
+    def _frost_check(self, inp, s: dict, now: datetime, d: Decision) -> None:
+        """Frost protection: below the outdoor limit (released after 15 min above it) or when the
+        return water stays under its limit for 5 min, the pump must keep circulating."""
+        if not inp.frost_enabled:
+            self._frost_cold, self._frost_safe_since, self._ret_low_since = False, None, None
+            self._frost_water = False
+            self.frost_reason = None
+            return
+        if inp.outside < s["vorst_buiten"]:
+            self._frost_cold, self._frost_safe_since = True, None
+        elif self._frost_cold:
+            self._frost_safe_since = self._frost_safe_since or now
+            if now - self._frost_safe_since >= timedelta(minutes=15):
+                self._frost_cold, self._frost_safe_since = False, None
+        if inp.ret is not None and inp.ret < s["vorst_retour"]:
+            self._ret_low_since = self._ret_low_since or now
+            if now - self._ret_low_since >= timedelta(minutes=5):
+                self._frost_water = True
+        elif inp.ret is None or inp.ret >= s["vorst_retour"] + 1.0:
+            self._ret_low_since, self._frost_water = None, False
+        water = self._frost_water
+        d.frost = self._frost_cold or water
+        self.frost_reason = "water" if water else "buiten" if self._frost_cold else None
 
     def _diag(self, s: dict, f_known: bool, sun_now: float = 0.0) -> dict:
         p = self.model.params
@@ -715,6 +756,7 @@ class SmartController:
             "geleerde_stooklijn": self._learned_curve(s),
             "ontdooien": self.defl.summary(),
             "ijsvorming": self.ice.summary(),
+            "vorstbeveiliging": self.frost_reason,
             "ontdooi_kwaliteit": self.coil.summary(),
             "ontdooi_piek": self.coil.last_peak,
             "ontdooi_wachttijd_min": round(self.defl.wait_minutes(s["ontdooi_wachttijd"]), 1),
