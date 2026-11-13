@@ -712,3 +712,14 @@ def test_hvac_off_waits_when_a_defrost_is_expected_soon():
     assert soon.defrost_hold and soon.switch is None
     later = c.step(_inp(last + timedelta(minutes=70), hvac_on=False, freq=40.0, flow=30.0, ret=27.0))
     assert later.switch == "off"
+
+
+def test_floor_source_is_reported_and_the_estimate_follows_the_floor_sensor():
+    c = SmartController()
+    t = datetime(2026, 11, 13, 12, 0, tzinfo=TZ)
+    d = c.step(_inp(t, ret=27.0))
+    assert d.diag["vloer_bron"] == "retour" and d.diag["vloer_gemeten"] == 27.0
+    for i in range(1, 6):
+        d = c.step(_inp(t + timedelta(minutes=i), ret=27.0, floor=24.0, switch_state="on"))
+    assert d.diag["vloer_bron"] == "vloersensor" and d.diag["vloer_gemeten"] == 24.0
+    assert abs(d.diag["vloer_geschat"] - 24.0) < 0.5

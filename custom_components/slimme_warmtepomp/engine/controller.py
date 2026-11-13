@@ -229,6 +229,8 @@ class SmartController:
         self._defrost_until: datetime | None = None
         self._unit_diff: float | None = None
         self._frost_cold = False
+        self._floor_src = None
+        self._f_meas: float | None = None
         self._frost_water = False
         self._frost_safe_since: datetime | None = None
         self._ret_low_since: datetime | None = None
@@ -510,6 +512,8 @@ class SmartController:
 
         # ---- floor state: measured proxy or decayed estimate
         f_meas = inp.floor if inp.floor is not None else inp.ret
+        self._floor_src = "vloersensor" if inp.floor is not None else "retour"
+        self._f_meas = f_meas
         dhw_busy = self.dhw.active
         proxy_ok = f_meas is not None and inp.switch_state != "off" and not dhw_busy
         beta = self.model.params.beta
@@ -760,6 +764,8 @@ class SmartController:
             "avond_bias_k": round(self.tracker.bias, 2),
             "avond_laatste_afwijking": _r(self.tracker.last_error),
             "vloer_geschat": _r(self.f_est),
+            "vloer_bron": self._floor_src,
+            "vloer_gemeten": _r(self._f_meas),
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),
