@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from .dhw import DhwController
 from .model import HouseModel
 from .defrost import DefrostLearner
+from .icing import IcingMonitor
 from .modulation import ModulationLearner
 from .planner import PlanInput, PlanResult, plan as run_plan
 from .prices import PriceCurve, PriceStats, weight_for
@@ -97,6 +98,9 @@ class Decision:
     away: bool = False
     grid_limited: bool = False
     freq_limited: bool = False         # setpoint limited by the maximum frequency setting
+    ice_level: str = "ok"             # ok / let_op / ijs (icing suspected)
+    ice_warning: bool = False
+    next_defrost_min: float | None = None
     soft: bool = False                 # setpoint held just above the return temperature (low frequency)
     cop_today: float | None = None
     cop_yesterday: float | None = None
@@ -176,6 +180,7 @@ class SmartController:
         self.dhw = DhwController()
         self.mod = ModulationLearner()
         self.defl = DefrostLearner()
+        self.ice = IcingMonitor()
         # persistent scalars
         self.pi_i = 0.0
         self.summer_mean: float | None = None
@@ -230,7 +235,7 @@ class SmartController:
     def export_state(self) -> dict:
         return {
             "model": self.model.to_dict(), "tracker": self.tracker.to_dict(),
-            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "dhw": self.dhw.to_dict(),
+            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "ice": self.ice.to_dict(), "dhw": self.dhw.to_dict(),
             "pi_i": self.pi_i, "summer_mean": self.summer_mean, "summer": self.summer,
             "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
             "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
@@ -246,6 +251,7 @@ class SmartController:
             self.dhw.from_dict(d.get("dhw", {}))
             self.mod.from_dict(d.get("mod", {}))
             self.defl.from_dict(d.get("defl", {}))
+            self.ice.from_dict(d.get("ice", {}))
             self.pi_i = float(d.get("pi_i", 0.0))
             self.summer_mean = d.get("summer_mean")
             self.summer = bool(d.get("summer", False))
@@ -415,6 +421,14 @@ class SmartController:
         if d.thermal_kw > 0 and power_w > 10.0:
             cop = d.thermal_kw / (power_w / 1000.0)
             d.cop = round(cop, 2) if COP_MIN <= cop <= COP_MAX else 0.0
+        unit_diff = (inp.unit_outside - inp.outside) if inp.unit_outside is not None and inp.outside is not None else None
+        self.ice.update(now, cop=d.cop, heating=d.heating, settling=settling, defrost=d.defrost,
+                        unit_diff=unit_diff, outside=inp.outside, freq_running=heating,
+                        last_end=self.defl.last_end, last_interval=self.defl.last_interval,
+                        mean_interval=self.defl.interval, n_defrosts=self.defl.n,
+                        since_last_min=self.defl.minutes_since_last(now))
+        d.ice_level, d.ice_warning = self.ice.level, self.ice.level == "ijs"
+        d.next_defrost_min = self.defl.minutes_until_next(now)
         e_dt = min(dt_h, 0.1)
         self.energy_th += d.thermal_kw * e_dt
         self.energy_el += power_w / 1000.0 * e_dt
@@ -694,6 +708,7 @@ class SmartController:
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),
             "ontdooien": self.defl.summary(),
+            "ijsvorming": self.ice.summary(),
             "ontdooi_wachttijd_min": round(self.defl.wait_minutes(s["ontdooi_wachttijd"]), 1),
             "buiten_verschil_unit": self._unit_diff,
             "modulatie_minimaal_verschil": self.mod.floor(),

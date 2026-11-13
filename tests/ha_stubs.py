@@ -143,7 +143,7 @@ def install():
         UnitOfTemperature=StrEnum("UnitOfTemperature", {"CELSIUS": "°C"}),
         UnitOfPower=StrEnum("UnitOfPower", {"WATT": "W", "KILO_WATT": "kW"}),
         UnitOfEnergy=StrEnum("UnitOfEnergy", {"KILO_WATT_HOUR": "kWh"}),
-        UnitOfTime=StrEnum("UnitOfTime", {"HOURS": "h"}),
+        UnitOfTime=StrEnum("UnitOfTime", {"HOURS": "h", "MINUTES": "min"}),
     )
     mod("homeassistant.const", **consts)
     mod("homeassistant.components.climate",

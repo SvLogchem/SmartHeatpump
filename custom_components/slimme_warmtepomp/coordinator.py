@@ -278,6 +278,31 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             if d.dhw_request and d.dhw_setpoint and cfg.get(CONF_DHW_SETPOINT):
                 await self._set_number(cfg[CONF_DHW_SETPOINT], d.dhw_setpoint)
 
+    ICE_TEXT = {
+        "cop_zakt": "de COP zakt ver onder het niveau direct na het ontdooien",
+        "herstelt_niet": "de COP na het ontdooien wordt steeds slechter (ontdooien lost het ijs niet op)",
+        "vaker": "de pomp ontdooit steeds vaker",
+        "ontdooit_te_laat": "de pomp ontdooit niet terwijl het koud is en hij al lang draait",
+        "pomp_sensor_koud": "de buitensensor van de pomp is veel kouder dan de buitentemperatuur",
+        "kritiek": "de COP is langdurig rond 1",
+    }
+
+    async def _notify_icing(self, decision: Decision, now) -> None:
+        """One persistent notification (at most every 12 hours) when the pump seems to be icing up."""
+        if decision.ice_level != "ijs":
+            return
+        last = getattr(self, "_ice_notified", None)
+        if last is not None and now - last < timedelta(hours=12):
+            return
+        self._ice_notified = now
+        reasons = ", ".join(self.ICE_TEXT.get(r, r) for r in decision.diag.get("ijsvorming", {}).get("redenen", []))
+        await self.hass.services.async_call("persistent_notification", "create", {
+            "title": "Warmtepomp: mogelijk ijsvorming",
+            "message": ("De slimme regeling vermoedt dat de warmtepomp ijs ophoopt: " + reasons + ". "
+                        "Controleer de ontdooi-instellingen van de pomp (interval, starttemperatuur, maximale "
+                        "ontdooitijd) en kijk of de verdamper vrij is van ijs."),
+            "notification_id": "slimme_warmtepomp_ijsvorming"}, blocking=False)
+
     async def _async_update_data(self) -> Decision:
         try:
             inp = await self._build_inputs()
@@ -285,6 +310,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
                 decision = await self.hass.async_add_executor_job(self.controller.step, inp)
             await self._execute(decision)
             now = dt_util.utcnow()
+            await self._notify_icing(decision, now)
             if self._saved_at is None or now - self._saved_at > timedelta(minutes=SAVE_INTERVAL_MIN):
                 await self.async_save()
             return decision

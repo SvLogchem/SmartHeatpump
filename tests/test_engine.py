@@ -499,3 +499,85 @@ def test_defrost_wait_uses_setting_until_enough_is_learned():
     assert d.diag["ontdooi_wachttijd_min"] == 3.0
     c2 = SmartController(); c2.import_state(c.export_state())
     assert c2.defl.n == 0
+
+
+# ---------------------------------------------------------------- voorspelling en ijsvorming
+def _cycle_history(dl, start, n=5, every=50):
+    t = start
+    for _ in range(n):
+        for _ in range(every - 3):
+            dl.update(t, False, 5.0, True); t += timedelta(minutes=1)
+        for _ in range(2):
+            dl.update(t, True, -4.0, True); t += timedelta(minutes=1)
+        dl.update(t, False, 5.0, True); t += timedelta(minutes=1)
+    return t
+
+
+def test_defrost_prediction_counts_down_to_the_learned_interval():
+    from engine.defrost import DefrostLearner
+    dl = DefrostLearner()
+    assert dl.minutes_until_next(_t(0)) is None                 # nothing learned yet
+    end = _cycle_history(dl, _t(0))
+    m = dl.minutes_until_next(end)
+    assert m is not None and -2.0 <= m <= 50.0
+    later = dl.minutes_until_next(end + timedelta(minutes=30))
+    assert later == pytest.approx(m - 30, abs=0.2)
+
+
+def _icing_run(cops_after_defrost, cop_between, *, extra=None, cycles=None):
+    """Feed the monitor: per cycle a defrost followed by a post-defrost COP and a steady COP."""
+    from engine.defrost import DefrostLearner
+    from engine.icing import IcingMonitor
+    dl, ic = DefrostLearner(), IcingMonitor()
+    t = _t(0)
+
+    def step(cop, **kw):
+        nonlocal t
+        a = dict(cop=cop, heating=cop > 0, settling=False, defrost=False, unit_diff=None, outside=1.0,
+                 freq_running=True, last_end=dl.last_end, last_interval=dl.last_interval,
+                 mean_interval=dl.interval, n_defrosts=dl.n, since_last_min=dl.minutes_since_last(t))
+        a.update(kw)
+        ic.update(t, **a); t += timedelta(minutes=1)
+
+    for post in cops_after_defrost:
+        for _ in range(25):
+            dl.update(t, False, 5.0, True); step(cop_between)
+        for _ in range(2):
+            dl.update(t, True, -4.0, True); step(0.0, defrost=True, heating=False, settling=True)
+        dl.update(t, False, 5.0, True)
+        for _ in range(11):
+            dl.update(t, False, 5.0, True); step(post)
+    return ic, dl, step
+
+
+def test_icing_monitor_stays_quiet_on_a_healthy_pump():
+    ic, *_ = _icing_run([4.0] * 8, 3.6)
+    assert ic.level == "ok" and ic.reasons == []
+
+
+def test_icing_monitor_flags_defrosts_that_stop_restoring_the_cop():
+    ic, *_ = _icing_run([4.0] * 6 + [3.0, 2.4, 2.0, 1.8, 1.8], 3.6)
+    assert "herstelt_niet" in ic.reasons and ic.level in ("let_op", "ijs")
+
+
+def test_icing_monitor_flags_collapsing_cop_between_defrosts():
+    ic, dl, step = _icing_run([4.0] * 4, 3.6)
+    for _ in range(14):
+        step(2.2)
+    assert "cop_zakt" in ic.reasons
+
+
+def test_icing_monitor_critical_when_cop_stays_around_one():
+    ic, dl, step = _icing_run([4.0] * 3, 3.6)
+    for _ in range(40):
+        step(1.1)
+    assert ic.level == "ijs" and "kritiek" in ic.reasons
+
+
+def test_icing_state_survives_restart_and_controller_publishes_it():
+    c = SmartController()
+    c.ice.cop_ref, c.ice.ref_n = 3.9, 4
+    c2 = SmartController(); c2.import_state(c.export_state())
+    assert c2.ice.cop_ref == 3.9 and c2.ice.ref_n == 4
+    d = c2.step(_inp(_t(0), room=20.8))
+    assert d.ice_level == "ok" and d.diag["ijsvorming"]["niveau"] == "ok"

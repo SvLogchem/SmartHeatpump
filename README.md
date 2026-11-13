@@ -58,6 +58,19 @@ De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert 
 - De regeling leert uit de ontdooicycli hoe lang ontdooien duurt, hoe vaak het gebeurt en hoe lang het water daarna nodig heeft om weer stabiel te worden (verschil aanvoer-retour terug binnen 25 % van daarvoor). Na minimaal 3 metingen vervangt de geleerde wachttijd (1,25 x herstel + 0,5 min, tussen 1 en 10 min) de instelling `ontdooi_wachttijd` (standaard 3 min). Tijdens die wachttijd wordt geen COP berekend en leert het huismodel niet. Zichtbaar als attributen `ontdooien` (aantal, duur, interval, herstel) en `ontdooi_wachttijd_min` van `sensor.slimme_wp_setpoint`.
 - **Buitentemperatuur:** de verplichte buitensensor stuurt stooklijn, zomermodus en het huismodel. Gebruik daar een echte buitentemperatuur (weerstation, Buienradar of een sensor in de schaduw), niet de sensor op het rooster van de warmtepomp: die bevriest en koelt af door de verdamper. Is de gekozen buitensensor niet beschikbaar, dan gebruikt de integratie de huidige temperatuur van de weerentiteit. De sensor van de pomp zelf kun je optioneel koppelen bij *Buitentemperatuur van de warmtepomp zelf*; die wordt alleen getoond en gebruikt om te leren bij welke temperatuur de pomp ontdooit (`buiten_verschil_unit` en `unit_buiten_temp`).
 
+## Voorspelling van ontdooien en ijsvorming
+
+- **Voorspelling:** na 3 gemeten ontdooicycli toont `sensor.slimme_wp_volgende_ontdooi` hoeveel minuten het naar verwachting duurt tot de volgende ontdooicyclus (negatief = te laat). De interval volgt de recente cycli.
+- **Ijsvorming:** direct na elke ontdooicyclus meet de regeling de COP van de schone verdamper. Daarmee vergelijkt hij de COP tussen de cycli. Hij waarschuwt (`sensor.slimme_wp_ijsvorming` = ok / let_op / ijs, `binary_sensor.slimme_wp_ijsvorming_alarm`) bij:
+  - `cop_zakt`: COP onder 70 % van het niveau na het ontdooien;
+  - `herstelt_niet`: de COP na het ontdooien zelf is meer dan 20 % lager dan lange tijd geleden;
+  - `vaker`: ontdooien komt steeds sneller achter elkaar (interval onder 60 % van normaal);
+  - `ontdooit_te_laat`: geen ontdooicyclus terwijl het koud is en de pomp al langer dan 2,2 keer het normale interval draait;
+  - `pomp_sensor_koud`: de buitensensor van de pomp is meer dan 4 K kouder (t.o.v. de echte buitentemperatuur) dan direct na het ontdooien (alleen als die sensor is gekoppeld);
+  - `kritiek`: COP onder 1,6 gedurende 15 minuten terwijl de compressor draait.
+  Eén reden geeft `let_op`, twee of `kritiek` geeft `ijs`. Bij `ijs` verschijnt (hoogstens elke 12 uur) een melding in Home Assistant. De regeling kan de ontdooi-instellingen van de pomp niet zelf aanpassen: controleer interval, starttemperatuur en maximale ontdooitijd in het bedienpaneel.
+- De regeling leert dit relatief aan jouw installatie, er zijn geen vaste natuurkundige drempels, behalve de genoemde percentages. Pas na een paar ontdooicycli is er een referentie.
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.
