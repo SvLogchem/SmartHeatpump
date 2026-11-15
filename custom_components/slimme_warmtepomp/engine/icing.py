@@ -20,7 +20,7 @@ Signals (each is learned relative to this installation, no fixed physics):
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 POST_WINDOW_MIN = 12.0
 LEVELS = ("ok", "let_op", "ijs")
@@ -121,9 +121,18 @@ class IcingMonitor:
 
     def to_dict(self) -> dict:
         return {"cop_ref": self.cop_ref, "cop_slow": self.cop_slow, "ref_n": self.ref_n,
-                "unit_ref": self.unit_ref}
+                "unit_ref": self.unit_ref, "level": self.level, "reasons": list(self.reasons),
+                "hold_until": self._hold_until.isoformat() if self._hold_until else None}
 
     def from_dict(self, d: dict) -> None:
         d = d or {}
         self.cop_ref, self.cop_slow = d.get("cop_ref"), d.get("cop_slow")
         self.ref_n, self.unit_ref = int(d.get("ref_n", 0)), d.get("unit_ref")
+        # keep a warning across a restart; the hold time makes sure it can still be released afterwards
+        lvl = d.get("level", "ok")
+        self.level = lvl if lvl in LEVELS else "ok"
+        self.reasons = [str(r) for r in d.get("reasons") or []]
+        hu = d.get("hold_until")
+        self._hold_until = datetime.fromisoformat(hu) if hu else None
+        if self.level != "ok" and self._hold_until is None:
+            self._hold_until = datetime.min.replace(tzinfo=timezone.utc)
