@@ -96,7 +96,7 @@ class DefrostLearner:
                 "recovery": self.recovery, "unit_t": self.unit_t,
                 "last_start": self.last_start.isoformat() if self.last_start else None,
                 "last_end": self.last_end.isoformat() if self.last_end else None,
-                "last_interval": self.last_interval}
+                "last_interval": self.last_interval, "pre_dtw": self._pre_dtw}
 
     def from_dict(self, d: dict) -> None:
         d = d or {}
@@ -108,3 +108,4 @@ class DefrostLearner:
         le = d.get("last_end")
         self.last_end = datetime.fromisoformat(le) if le else None
         self.last_interval = d.get("last_interval")
+        self._pre_dtw = d.get("pre_dtw")

@@ -800,3 +800,35 @@ def test_usage_in_controller_uses_fixed_price_unless_sensor_price_is_chosen():
                           cost_fixed_price=False))
     assert d2.diag["kosten_dag"] > fixed * 3                                    # sensor price 1.0 against 0.23
     assert d.diag["graaddagen_dag"] > 0 and d.diag["draaitijd_vandaag"] > 0
+
+
+def test_full_state_survives_restart_including_defrosts_and_ice_warning():
+    """Everything the integration learns or counts must come back after a restart (via JSON, like HA storage)."""
+    import json, math
+    c = SmartController()
+    t0 = datetime(2026, 11, 10, 0, 0, tzinfo=TZ)
+    room = 20.5
+    for i in range(24 * 60):
+        now = t0 + timedelta(minutes=i)
+        defr = (i % 90) in (50, 51, 52, 53)
+        run = (i % 240) < 200
+        out = 3 + 3 * math.sin(i / 200)
+        c.step(_inp(now, room=room, outside=out, flow=18 if defr else 31, ret=17 if defr else 26, floor=24.0,
+                    freq=45.0 if run else 0.0, power_w=1100 if run else 0, price_now=0.2,
+                    coil_temp=(14 if defr else -6) if run else out, unit_outside=out))
+        room = min(22.5, max(19, room + (0.004 if run else -0.003)))
+    c.ice.level, c.ice.reasons = "let_op", ["test"]
+    s1 = json.loads(json.dumps(c.export_state()))
+    assert c.usage.summary()["ontdooien_vandaag"] >= 5 and c.defl.n >= 5 and c.coil.n >= 5
+    c2 = SmartController()
+    c2.import_state(s1)
+    assert json.loads(json.dumps(c2.export_state())) == s1
+    assert c2.usage.summary(c2.today["starts"]) == c.usage.summary(c.today["starts"])
+    assert c2.today == c.today and c2.defl.n == c.defl.n and c2.coil.n == c.coil.n
+    assert c2.ice.level == "let_op" and c2.defl._pre_dtw == c.defl._pre_dtw
+    # a restored warning must still be releasable once the conditions are gone
+    now = t0 + timedelta(days=2)
+    c2.ice.update(now, cop=3.5, heating=False, settling=False, defrost=False, unit_diff=None, outside=5.0,
+                  freq_running=False, last_end=None, last_interval=None, mean_interval=None,
+                  n_defrosts=0, since_last_min=None)
+    assert c2.ice.level == "ok"
