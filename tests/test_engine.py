@@ -723,3 +723,80 @@ def test_floor_source_is_reported_and_the_estimate_follows_the_floor_sensor():
         d = c.step(_inp(t + timedelta(minutes=i), ret=27.0, floor=24.0, switch_state="on"))
     assert d.diag["vloer_bron"] == "vloersensor" and d.diag["vloer_gemeten"] == 24.0
     assert abs(d.diag["vloer_geschat"] - 24.0) < 0.5
+
+
+# ---------------------------------------------------------------- usage statistics
+def _usage_run(u, start, minutes, *, outside=8.0, heating=True, defrost=False, price=0.23, reg=True,
+               el_kw=1.0, step=1.0, base=18.0):
+    t = start
+    for _ in range(int(minutes / step)):
+        dt = step / 60.0
+        u.update(t, dt_h=dt, e_dt=dt, outside=outside, base=base, el_kwh=el_kw * dt, th_kwh=3 * el_kw * dt,
+                 price=price, heating=heating, defrost=defrost, regeling_actief=reg)
+        t += timedelta(minutes=step)
+    return t
+
+
+def test_usage_degree_days_cost_and_run_time():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    _usage_run(u, datetime(2026, 11, 16, 0, 0, tzinfo=TZ), 24 * 60)             # 8 °C all day, 1 kW
+    s = u.summary(starts_today=4)
+    assert s["graaddagen_dag"] == pytest.approx(10.0, abs=0.05)                 # 18 - 8 for one day
+    assert s["kosten_dag"] == pytest.approx(24 * 0.23, abs=0.05)
+    assert s["draaitijd_vandaag"] == 1440 and s["draaitijd_per_start"] == 360
+    assert s["kwh_per_graaddag_dag"] == pytest.approx(2.4, abs=0.05)
+    assert s["graaddagen_week"] == s["graaddagen_dag"] and s["kosten_jaar"] == s["kosten_dag"]
+
+
+def test_usage_mild_day_has_no_kwh_per_degree_day_and_base_is_adjustable():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    _usage_run(u, datetime(2026, 11, 16, 0, 0, tzinfo=TZ), 60, outside=19.0)
+    assert u.summary()["graaddagen_dag"] == 0.0 and u.summary()["kwh_per_graaddag_dag"] is None
+    u2 = UsageStats()
+    _usage_run(u2, datetime(2026, 11, 16, 0, 0, tzinfo=TZ), 24 * 60, outside=19.0, base=20.0)
+    assert u2.summary()["graaddagen_dag"] == pytest.approx(1.0, abs=0.02)
+
+
+def test_usage_counts_defrosts_with_debounce_and_resets_per_period():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    t = datetime(2026, 11, 16, 6, 0, tzinfo=TZ)
+    for flag in (False, True, True, False, True, False):                        # flicker inside 5 min = one
+        t = _usage_run(u, t, 1, defrost=flag)
+    assert u.summary()["ontdooien_vandaag"] == 1
+    t = _usage_run(u, t + timedelta(minutes=10), 1, defrost=True)
+    assert u.summary()["ontdooien_vandaag"] == 2 and u.summary()["ontdooien_7_dagen"] == 2
+    _usage_run(u, datetime(2026, 11, 17, 0, 5, tzinfo=TZ), 1)
+    s = u.summary()
+    assert s["ontdooien_vandaag"] == 0 and s["ontdooien_7_dagen"] == 2 and s["graaddagen_dag"] < 0.1
+
+
+def test_usage_compares_smart_control_on_and_off_and_persists():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    t = datetime(2026, 11, 1, 0, 0, tzinfo=TZ)
+    for day in range(6):
+        reg = day % 2 == 0
+        _usage_run(u, t + timedelta(days=day), 24 * 60, reg=reg, el_kw=1.0 if reg else 1.5, step=10.0)
+    _usage_run(u, t + timedelta(days=6), 10, step=10.0)                         # closes day 6
+    s = u.summary()
+    assert s["dagen_regeling"] == 3 and s["dagen_schaduw"] == 3
+    assert s["kwh_per_graaddag_regeling"] < s["kwh_per_graaddag_schaduw"]
+    v = UsageStats(); v.from_dict(u.to_dict())
+    assert v.summary() == s
+
+
+def test_usage_in_controller_uses_fixed_price_unless_sensor_price_is_chosen():
+    c = SmartController()
+    t = datetime(2026, 11, 16, 12, 0, tzinfo=TZ)
+    for i in range(30):
+        d = c.step(_inp(t + timedelta(minutes=i), freq=40.0, flow=30.0, ret=27.0, power_w=1000.0, price_now=1.0))
+    fixed = d.diag["kosten_dag"]
+    c2 = SmartController()
+    for i in range(30):
+        d2 = c2.step(_inp(t + timedelta(minutes=i), freq=40.0, flow=30.0, ret=27.0, power_w=1000.0, price_now=1.0,
+                          cost_fixed_price=False))
+    assert d2.diag["kosten_dag"] > fixed * 3                                    # sensor price 1.0 against 0.23
+    assert d.diag["graaddagen_dag"] > 0 and d.diag["draaitijd_vandaag"] > 0
