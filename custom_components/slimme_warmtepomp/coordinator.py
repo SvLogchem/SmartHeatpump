@@ -48,6 +48,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self._forecast: list = []
         self._forecast_at: datetime | None = None
         self._saved_at: datetime | None = None
+        self._saved_defrosts = 0.0
 
     # ------------------------------------------------------------------ config
     @property
@@ -333,7 +334,11 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             now = dt_util.utcnow()
             await self._notify_icing(decision, now)
             await self._notify_frost(decision, now)
-            if self._saved_at is None or now - self._saved_at > timedelta(minutes=SAVE_INTERVAL_MIN):
+            # save at once when a defrost was counted (so a restart never loses it), else every N minutes
+            defrosts = self.controller.usage.cur.get("day", {}).get("defrosts", 0.0)
+            new_defrost = defrosts > self._saved_defrosts
+            self._saved_defrosts = defrosts
+            if new_defrost or self._saved_at is None or now - self._saved_at > timedelta(minutes=SAVE_INTERVAL_MIN):
                 await self.async_save()
             return decision
         except Exception as err:  # noqa: BLE001 - keep the loop alive, show the last decision

@@ -64,6 +64,7 @@ class FakeHass:
         self.config = types.SimpleNamespace(latitude=52.37, longitude=4.9)
         self.config_entries = FakeConfigEntries(self)
         self.entities = []
+        self.bus = types.SimpleNamespace(async_listen_once=lambda *a, **k: (lambda: None))
 
     async def async_add_executor_job(self, fn, *a):
         return fn(*a)
@@ -91,7 +92,8 @@ def make_hass(config=CONFIG):
     s("sensor.price", 0.22, raw_today=[{"start": (now + timedelta(hours=i)).isoformat(), "value": 0.2 + 0.01 * i} for i in range(12)])
     s("number.wp_target", 28, min=20, max=45); s("switch.wp", "on"); s("sensor.tank", 45.0)
     s("switch.dhw", "off"); s("number.dhw_target", 45, min=30, max=65)
-    entry = types.SimpleNamespace(entry_id="abc123", data=dict(config), options={}, runtime_data=None)
+    entry = types.SimpleNamespace(entry_id="abc123", data=dict(config), options={}, runtime_data=None,
+                                  async_on_unload=lambda cb: None)
     return h, entry
 
 

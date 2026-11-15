@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import entity_registry as er
@@ -42,6 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlimmeConfigEntry) -> bo
     coordinator = SmartHeatpumpCoordinator(hass, entry)
     await coordinator.async_load()
     entry.runtime_data = coordinator
+    # HA does not unload entries on shutdown/restart: save explicitly so nothing since the last periodic save is lost
+    async def _save_on_stop(_event) -> None:
+        await coordinator.async_save()
+
+    entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _save_on_stop))
     # entities restore their last values (numbers, switches, climate) while being added ...
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # ... so the first control cycle already runs with the user's settings.
