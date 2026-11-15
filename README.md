@@ -66,9 +66,9 @@ De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert 
 
 De integratie houdt zelf per dag, week, maand en jaar bij wat de pomp verbruikt en kost, zonder helpers of YAML-packages:
 
-- **Graaddagen** (`sensor.slimme_wp_graaddagen_dag/week/maand`): hoeveel kouder het was dan de referentietemperatuur (`number.slimme_wp_graaddagen_referentietemperatuur`, standaard 18 °C), gebaseerd op de buitentemperatuur van de integratie (niet de sensor van de pomp).
+- **Graaddagen** (`sensor.slimme_wp_graaddagen_dag/week/maand`): hoeveel kouder het was dan de referentietemperatuur (`number.slimme_wp_graaddag_basis`, standaard 18 °C), gebaseerd op de buitentemperatuur van de integratie (niet de sensor van de pomp).
 - **kWh per graaddag** (`sensor.slimme_wp_kwh_per_graaddag` en `…_week`): verbruik gedeeld door graaddagen, vergelijkbaar tussen koude en milde dagen. Pas vanaf 0,5 graaddag per dag en 1 per week.
-- **Verbruik en kosten** (`sensor.slimme_wp_verbruik_vandaag/week/maand`, `sensor.slimme_wp_kosten_vandaag/week/maand/jaar`): standaard met de vaste prijs `number.slimme_wp_vaste_stroomprijs` (0,23 €/kWh). Zet `switch.slimme_wp_kosten_met_vaste_prijs` uit om met de prijs van de gekoppelde stroomprijssensor op dat moment te rekenen (dynamisch contract).
+- **Verbruik en kosten** (`sensor.slimme_wp_verbruik_vandaag/week/maand`, `sensor.slimme_wp_kosten_vandaag/week/maand/jaar`): standaard met de vaste prijs `number.slimme_wp_vaste_stroomprijs` (0,23 €/kWh). Zet `switch.slimme_wp_kosten_vaste_prijs` uit om met de prijs van de gekoppelde stroomprijssensor op dat moment te rekenen (dynamisch contract).
 - **Draaitijd** vandaag en per start, en het aantal **ontdooicycli** vandaag en in 7 dagen.
 - **Slimme regeling aan tegenover uit:** `sensor.slimme_wp_kwh_graaddag_regeling` en `…_schaduw` zijn het gemiddelde kWh per graaddag van de laatste 28 dagen waarop de regeling meer dan de helft van de tijd aan stond, tegenover de dagen waarop hij uit stond. Het aantal dagen zit in de attributen van de sensor `sensor.slimme_wp_setpoint` (`dagen_regeling`, `dagen_schaduw`). Pas bruikbaar na een aantal dagen van elk.
 
