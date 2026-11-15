@@ -1,3 +1,5 @@
+<p align="center"><img src="icon.png" width="128" alt="Slimme Warmtepomp"></p>
+
 # SmartHeatpump voor Home Assistant
 
 Zelflerende regeling voor warmtepompen met vloerverwarming. Ontwikkeld voor een Alsavo-pomp via Tuya Local, maar bruikbaar voor elke pomp waarvan je de doeltemperatuur als `number` kunt instellen.
