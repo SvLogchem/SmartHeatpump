@@ -14,6 +14,7 @@ from .dhw import DhwController
 from .model import HouseModel
 from .defrost import DefrostLearner
 from .coil import CoilTracker
+from .usage import UsageStats
 from .icing import IcingMonitor
 from .modulation import ModulationLearner
 from .planner import PlanInput, PlanResult, plan as run_plan
@@ -63,6 +64,7 @@ class Inputs:
     preheat_enabled: bool = True
     price_enabled: bool = True
     frost_enabled: bool = True
+    cost_fixed_price: bool = True
     modulation_enabled: bool = True
     dhw_enabled: bool = False
     windows_open: bool = False            # any configured window/door sensor reports open
@@ -188,6 +190,8 @@ class SmartController:
         self.defl = DefrostLearner()
         self.ice = IcingMonitor()
         self.coil = CoilTracker()
+        self.usage = UsageStats()
+        self._usage_out: dict = {}
         # persistent scalars
         self.pi_i = 0.0
         self.summer_mean: float | None = None
@@ -249,7 +253,7 @@ class SmartController:
     def export_state(self) -> dict:
         return {
             "model": self.model.to_dict(), "tracker": self.tracker.to_dict(),
-            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "ice": self.ice.to_dict(), "coil": self.coil.to_dict(), "dhw": self.dhw.to_dict(),
+            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "ice": self.ice.to_dict(), "coil": self.coil.to_dict(), "usage": self.usage.to_dict(), "dhw": self.dhw.to_dict(),
             "pi_i": self.pi_i, "summer_mean": self.summer_mean, "summer": self.summer,
             "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
             "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
@@ -267,6 +271,7 @@ class SmartController:
             self.defl.from_dict(d.get("defl", {}))
             self.ice.from_dict(d.get("ice", {}))
             self.coil.from_dict(d.get("coil", {}))
+            self.usage.from_dict(d.get("usage", {}))
             self.pi_i = float(d.get("pi_i", 0.0))
             self.summer_mean = d.get("summer_mean")
             self.summer = bool(d.get("summer", False))
@@ -485,6 +490,14 @@ class SmartController:
         d.cop_today = _day_cop(self.today)
         if self.yesterday:
             d.cop_yesterday, d.starts_yesterday = _day_cop(self.yesterday), self.yesterday["starts"]
+
+        # ---- usage statistics (degree days, cost, run time, defrosts)
+        price_used = (inp.price_now if inp.price_now is not None and not inp.cost_fixed_price
+                      else s["vaste_stroomprijs"])
+        self.usage.update(now, dt_h=dt_h, e_dt=e_dt, outside=inp.outside, base=s["graaddag_basis"],
+                          el_kwh=power_w / 1000.0 * e_dt, th_kwh=d.thermal_kw * e_dt, price=price_used,
+                          heating=heating, defrost=d.defrost, regeling_actief=inp.regeling_actief)
+        self._usage_out = self.usage.summary(self.today["starts"])
 
         # ---- prices
         price_enabled = inp.price_enabled and s["prijs_gevoeligheid"] > 0
@@ -772,6 +785,7 @@ class SmartController:
             "ontdooien": self.defl.summary(),
             "ijsvorming": self.ice.summary(),
             "vorstbeveiliging": self.frost_reason,
+            **self._usage_out,
             "ontdooi_kwaliteit": self.coil.summary(),
             "ontdooi_piek": self.coil.last_peak,
             "ontdooi_wachttijd_min": round(self.defl.wait_minutes(s["ontdooi_wachttijd"]), 1),
