@@ -76,6 +76,14 @@ De integratie houdt zelf per dag, week, maand en jaar bij wat de pomp verbruikt 
 
 Alles wordt bewaard na een herstart. Het verbruik komt uit dezelfde meting als de energiesensoren (compressor en ventilator, niet de circulatiepomp).
 
+## Zelfcorrectie bij een aanhoudend tekort
+
+Blijft de kamer onder het doel terwijl het setpoint al een tijd hetzelfde is, dan corrigeert de regeling dat zelf: de bijsturing groeit sneller (1 °C per uur per graad tekort, bereik tot +6 °C) zolang de kamer niet al vanzelf opwarmt. Bij te warm gaat het terugdraaien ook sneller. De correctie wordt bewaard bij een herstart. De frequentiegrens (dag en stille uren) blijft gelden: de pomp gaat stapsgewijs hoger, niet in één keer naar maximaal toerental.
+
+## Minimaal setpoint bij verwarmen
+
+Heeft jouw vloer water van 30 °C of meer nodig, maar kiest het geleerde model lagere waarden (en blijft de kamer daardoor te koud), zet dan `Minimaal Setpoint Bij Verwarmen` op bijvoorbeeld 31 (0 = uit). Zolang de kamer onder het doel zit, wordt het setpoint minstens zo hoog. Het setpoint loopt mee met de retour plus het toegestane frequentieverschil, dus de pomp springt niet in één keer naar maximaal toerental. Daarna blijft de pomp op laag toerental aan. Uitlopen (te warm, dure stroom, open raam) gaat voor.
+
 ## Tekort-boost (kamer blijft te koud)
 
 Blijft de kamer langer dan de wachttijd te koud, dan wacht de regeling niet op de trage bijsturing maar pakt het krachtig aan:

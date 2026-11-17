@@ -43,6 +43,7 @@ NUMBER_SPECS: list[tuple] = [
     ("max_freq_stil", "Slimme WP Max Frequentie Stille Uren (0 = uit)", 0.0, 120.0, 5.0, "Hz", 50.0, "core"),
     ("ontdooi_wachttijd", "Slimme WP Wachttijd Na Ontdooien", 0.0, 15.0, 1.0, "min", 3.0, "core"),
     ("modulatie_marge", "Slimme WP Modulatie Marge", 0.0, 2.0, 0.1, "°C", 0.3, "core"),
+    ("stook_min", "Slimme WP Minimaal Setpoint Bij Verwarmen (0 = uit)", 0.0, 40.0, 1.0, "°C", 0.0, "core"),
     # --- tekort-boost: blijft de kamer te koud, dan eerst krachtig opwarmen en daarna zacht aanhouden ---
     ("boost_tekort", "Slimme WP Boost Bij Tekort", 0.2, 2.0, 0.1, "°C", 0.4, "core"),
     ("boost_wachttijd", "Slimme WP Boost Wachttijd", 10.0, 120.0, 5.0, "min", 30.0, "core"),

@@ -27,6 +27,7 @@ S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
 START_GAP = 2.8        # K above the measured water temperature that makes the compressor start (pump starts at ~2.5)
 COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
+KI_UP, KI_DOWN, PI_MAX = 1.0, 0.5, 6.0   # a persistent shortfall is corrected quickly and over a wide range
 KP_PLANNED = 0.5       # the planner already anticipates; keep the reactive part gentle      # feedback on top of the model (K per K, K per K*h)
 SAMPLE_MIN = 5
 LEARN_MIN = 15
@@ -212,6 +213,7 @@ class SmartController:
 
     def _reset_runtime(self) -> None:
         self._win: list = []
+        self._tr_win: list = []
         self._last_sample: datetime | None = None
         self._last_learn: datetime | None = None
         self._last_step: datetime | None = None
@@ -678,7 +680,7 @@ class SmartController:
 
         # ---- decide run / coast (with minimum run and standstill times)
         in_quiet = quiet_fn(now)
-        start_kick = False
+        start_kick = heat_floor = False
         emergency = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - 0.3
         over = tr > sp_now + s["tolerantie_hoog"]
         grid_block = self._grid_limiter(inp, s, now)
@@ -710,7 +712,18 @@ class SmartController:
                         else "te_warm" if over else "uitlopen" if pl.coast_now else "wacht_draaitijd")
         else:
             e = sp_now - tr
-            self.pi_i = _clamp(self.pi_i + KI * e * dt_h, -2.0, 2.0)
+            # room trend over the last ~40 min: no extra push while the room is already recovering by itself
+            th = now.timestamp() / 3600.0
+            self._tr_win = [x for x in self._tr_win if th - x[0] <= 0.67] + [(th, tr)]
+            rate = (_slope([x[0] for x in self._tr_win], [x[1] for x in self._tr_win])
+                    if len(self._tr_win) >= 5 and th - self._tr_win[0][0] >= 0.25 else 0.0)
+            if e > 0.3 and rate < 0.15:
+                ki = KI_UP
+            elif e < -0.1:
+                ki = KI_DOWN
+            else:
+                ki = KI
+            self.pi_i = _clamp(self.pi_i + ki * e * dt_h, -2.0, PI_MAX)
             if abs(e) < 0.1:
                 self.pi_i *= 1.0 - min(1.0, 0.2 * dt_h)
             delta = min(pl.delta_now, s["stille_boost_max"]) if in_quiet else pl.delta_now
@@ -723,10 +736,18 @@ class SmartController:
             d.soft = soft
             cap = gap_cap_fn(now)
             if cap is not None and not soft and inp.ret is not None and not emergency:
-                base_now = s_base(now, to_now, sun_fn(now), sp_now) + self.pi_i
+                base_now = s_base(now, to_now, sun_fn(now), sp_now)     # the integrator may not bypass the Hz limit
                 limited = max(base_now, inp.ret + cap)
                 if raw > limited:
                     raw, d.freq_limited = limited, True
+            # Minimum heating setpoint (user setting): while the room is below target the water is brought up to
+            # at least this temperature, at the allowed frequency (setpoint follows return + frequency gap).
+            heat_floor = False
+            if s["stook_min"] > 0 and x_meas is not None and tr < sp_now and boost is None:
+                lim = x_meas + (cap if cap is not None else 4.0)
+                tgt = min(s["stook_min"], max(lim, x_meas + START_GAP))
+                if raw < tgt:
+                    raw, heat_floor = tgt, True
             # Room clearly too cold but the compressor idle (just circulating): a setpoint that is not far
             # enough above the water temperature never starts the pump, whatever the heating curve says.
             start_kick = bool(
@@ -755,7 +776,7 @@ class SmartController:
                         else f"voorverwarmen ({pl.reason})") if (d.preheating or boost) else (
                 "regelen_geleerd" if wl >= 0.99 else "regelen_stooklijn" if wl <= 0 else "regelen_gemengd")
         d.setpoint_raw = round(raw, 2)
-        if (boost == "boost" or start_kick) and not d.coasting:
+        if (boost == "boost" or start_kick or heat_floor) and not d.coasting:
             # follow the rising water temperature step by step so the compressor keeps its high frequency
             step = max(inp.setpoint_step, 0.1)
             d.setpoint = (math.ceil(raw / step - 1e-9) if start_kick else round(raw / step)) * step

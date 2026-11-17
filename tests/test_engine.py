@@ -889,3 +889,40 @@ def test_start_kick_when_room_is_cold_but_compressor_idle():
     for m in range(0, 6):
         d = c.step(_inp(_t(m), **kw))
     assert d.setpoint >= 22.5 + 2.5 and not d.coasting
+
+
+def test_minimum_heating_setpoint_raises_low_curve_but_follows_frequency_gap():
+    kw = dict(room=19.4, outside=5.7, switch_state="on", target_current=24.0, freq=40.0,
+              settings={"setpoint_dag": 20.4})
+    base = SmartController()
+    b = None
+    for m in range(6):
+        b = base.step(_inp(_t(m), flow=27.0, ret=24.0, **kw))
+    c = SmartController()
+    for m in range(6):
+        d = c.step(_inp(_t(m), flow=27.0, ret=24.0, **{**kw, "settings": {**kw["settings"], "stook_min": 31.0}}))
+    assert d.setpoint_raw >= 24.0 + 2.8 and d.setpoint_raw <= 31.0     # climbs with the return, no jump to 31 at once
+    e = SmartController()
+    for m in range(6):
+        f = e.step(_inp(_t(m), flow=32.0, ret=30.0, **{**kw, "settings": {**kw["settings"], "stook_min": 31.0}}))
+    assert f.setpoint_raw >= 30.9                                       # return near 30: setpoint is the 31 minimum
+    g = SmartController()
+    for m in range(6):                                                  # room above target: minimum not applied
+        h = g.step(_inp(_t(m), flow=27.0, ret=24.0, **{**kw, "room": 20.6, "settings": {**kw["settings"], "stook_min": 31.0}}))
+    assert h.setpoint_raw < 31.0
+
+
+def test_persistent_shortfall_raises_setpoint_by_itself_beyond_old_limit():
+    """Real history: room 0.8-0.9 K under target all day while the setpoint stayed at 23-25."""
+    kw = dict(room=19.6, outside=6.0, flow=27.0, ret=24.5, switch_state="on", target_current=24.0, freq=35.0,
+              settings={"setpoint_dag": 20.4, "boost_tekort": 2.0})      # boost off here: only the integrator acts
+    c = SmartController()
+    first = c.step(_inp(_t(0), **kw))
+    for m in range(1, 240):
+        d = c.step(_inp(_t(m), **kw))
+    assert c.pi_i > 2.0 and c.pi_i <= 6.0                       # old limit was 2 K
+    assert d.setpoint_raw > first.setpoint_raw + 1.5
+    r = SmartController()                                         # room already recovering: no extra push
+    for m in range(0, 120):
+        r.step(_inp(_t(m), **{**kw, "room": 19.4 + 0.004 * m}))
+    assert r.pi_i < c.pi_i
