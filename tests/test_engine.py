@@ -832,3 +832,13 @@ def test_full_state_survives_restart_including_defrosts_and_ice_warning():
                   freq_running=False, last_end=None, last_interval=None, mean_interval=None,
                   n_defrosts=0, since_last_min=None)
     assert c2.ice.level == "ok"
+
+
+def test_coasting_setpoint_is_low_enough_for_the_compressor_to_stop():
+    """Real history: the pump stops its compressor at return >= setpoint + 2 K. Coasting must ask for
+    clearly less than that, otherwise the compressor keeps running at minimum frequency."""
+    c = SmartController()
+    c.step(_inp(_t(-90), room=22.5, ret=26.4, flow=30.0))
+    d = c.step(_inp(_t(0), room=22.5, ret=26.4, flow=30.0, outside=22.0, freq=30.0))   # over temperature -> coast
+    assert d.coasting
+    assert 26.4 - d.setpoint_raw >= 2.5 and 26.4 - d.setpoint >= 2.0
