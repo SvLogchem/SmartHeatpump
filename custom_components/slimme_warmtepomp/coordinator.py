@@ -230,6 +230,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             price_enabled=self.switches["prijssturing_actief"],
             modulation_enabled=self.switches["modulatie_actief"],
             frost_enabled=self.switches["vorstbeveiliging_actief"],
+            boost_enabled=self.switches["tekort_boost_actief"],
             cost_fixed_price=self.switches["kosten_vaste_prijs"],
             dhw_enabled=self.has_dhw and self.switches["dhw_actief"],
             preset=self.preset, manual_temp=self.manual_temp, switch_state=sw,
