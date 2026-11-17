@@ -27,6 +27,7 @@ S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
 START_GAP = 2.8        # K above the measured water temperature that makes the compressor start (pump starts at ~2.5)
 COAST_GAP_MIN = 2.5
+SETTLE_MIN = 8.0     # minutes of steady frequency and gap before the frequency table learns
 COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
 KI_UP, KI_DOWN, PI_MAX = 1.0, 0.5, 6.0   # a persistent shortfall is corrected quickly and over a wide range
 TRIM_RATE, TRIM_TAU_H, TRIM_BIN, TRIM_MIN, TRIM_MAX = 0.2, 6.0, 3.0, -4.0, 6.0   # curve trim: K per hour per K of lasting error, averaging time h, bin width K, limits K
@@ -217,6 +218,7 @@ class SmartController:
     def _reset_runtime(self) -> None:
         self._win: list = []
         self._tr_win: list = []
+        self._lw: list = []
         self._tr_rate = 0.0
         self._e_ema = 0.0
         self._floor_gap: float | None = None
@@ -261,11 +263,19 @@ class SmartController:
         self._deficit_since: datetime | None = None
         self._boost_next: datetime | None = None
 
-    def reset_model(self) -> None:
-        self.model.reset()
-        self.tracker = EveningTracker()
-        self.pi_i = 0.0
-        self.trim = {}
+    def reset_model(self, fraction: float = 1.0) -> None:
+        """Relearn ``fraction`` (0..1) of the house model, evening correction, curve trim and integrator."""
+        if fraction >= 0.999:
+            self.model.reset()
+            self.tracker = EveningTracker()
+            self.pi_i = 0.0
+            self.trim = {}
+        else:
+            keep = max(0.0, 1.0 - fraction)
+            self.model.shrink(keep)
+            self.tracker.bias *= keep
+            self.pi_i *= keep
+            self.trim = {k: v * keep for k, v in self.trim.items()}
         self._e_ema = 0.0
         self._win = []
 
@@ -485,13 +495,20 @@ class SmartController:
         d.energy_thermal_kwh, d.energy_electric_kwh = round(self.energy_th, 3), round(self.energy_el, 3)
 
         # ---- learn how the heat pump reacts to the gap between setpoint and return temperature
+        # Only learn when the reaction has settled: the compressor frequency and the gap have both been steady
+        # for a few minutes (this also lets the boost, where the setpoint keeps following the return, teach
+        # the table at its higher gaps; a frequency that is still ramping down is never recorded).
         if inp.target_current != self._tgt_value:
             self._tgt_value, self._tgt_since = inp.target_current, now
-        if (inp.target_current is not None and inp.ret is not None and inp.hvac_on and not settling
-                and not self.dhw.active and not window_active and inp.switch_state != "off"
-                and self._tgt_since is not None and now - self._tgt_since >= timedelta(minutes=15)
-                and inp.learning_enabled):
-            self.mod.observe(inp.target_current - inp.ret, d.heating, inp.freq, d.thermal_kw or None)
+        gap_now = (inp.target_current - inp.ret) if inp.target_current is not None and inp.ret is not None else None
+        th_l = now.timestamp() / 60.0
+        self._lw = [x for x in self._lw if th_l - x[0] <= SETTLE_MIN] + [(th_l, gap_now, inp.freq)]
+        steady = (gap_now is not None and th_l - self._lw[0][0] >= SETTLE_MIN - 1.0 and len(self._lw) >= 3
+                  and all(x[1] is not None and abs(x[1] - gap_now) <= 0.5 for x in self._lw)
+                  and (inp.freq is None or all(x[2] is not None and abs(x[2] - inp.freq) <= 3.0 for x in self._lw)))
+        if (steady and inp.hvac_on and not settling and not self.dhw.active and not window_active
+                and inp.switch_state != "off" and inp.learning_enabled):
+            self.mod.observe(gap_now, d.heating, inp.freq, d.thermal_kw or None)
 
         # ---- daily statistics: COP and compressor starts per day
         key = now.date().isoformat()

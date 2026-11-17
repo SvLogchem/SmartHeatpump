@@ -154,6 +154,7 @@ def install():
     mod("homeassistant.components.number", NumberEntity=D('NumberEntity'),
         NumberMode=StrEnum("NumberMode", {"BOX": "box"}))
     mod("homeassistant.components.switch", SwitchEntity=D('SwitchEntity'))
+    mod("homeassistant.components.button", ButtonEntity=D('ButtonEntity'))
     mod("homeassistant.components.sensor", SensorEntity=D('SensorEntity'),
         SensorDeviceClass=StrEnum("SDC", {"TEMPERATURE": "t", "POWER": "p", "ENERGY": "e"}),
         SensorStateClass=StrEnum("SSC", {"MEASUREMENT": "m", "TOTAL_INCREASING": "ti"}))

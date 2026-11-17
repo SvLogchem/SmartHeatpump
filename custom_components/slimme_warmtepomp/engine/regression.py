@@ -25,6 +25,13 @@ class RidgeEW:
         self.b = [0.0] * n
         self.weight = 0.0
 
+    def shrink(self, keep: float) -> None:
+        """Forget part of the collected data (keep 0..1): the prior and new samples weigh more afterwards."""
+        keep = min(1.0, max(0.0, keep))
+        self.A = [[v * keep for v in row] for row in self.A]
+        self.b = [v * keep for v in self.b]
+        self.weight *= keep
+
     def update(self, x, y: float, w: float = 1.0) -> None:
         f = self.forget
         n = self.n

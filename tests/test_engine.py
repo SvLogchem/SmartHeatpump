@@ -991,3 +991,27 @@ def test_room_prediction_has_no_gap_at_night():
     assert res.tr_check is not None
     evening = plan(_plan_input(m, lambda t: 4.0, datetime(2026, 11, 12, 15, 0, tzinfo=TZ), 20.0, f_eq))
     assert evening.tr_check is not None                          # unchanged: one hour after bedtime
+
+
+def test_partial_relearn_keeps_the_share_that_was_not_reset():
+    import json
+    c = SmartController()
+    kw = dict(room=19.6, outside=6.0, flow=27.0, ret=24.5, switch_state="on", target_current=24.0, freq=35.0,
+              settings={"setpoint_dag": 20.4, "boost_tekort": 2.0})
+    for m in range(0, 1440):
+        c.step(_inp(_t(m), **kw))
+    # feed the model a little so there is something to forget
+    for i in range(400):
+        c.model.learn_room(0.05, 2.0 + 0.001 * i, 14.0, 0.2)
+        c.model.learn_floor(0.3, 1.0 + 0.001 * i, 2.0)
+    conf0, trim0, pi0 = c.model.confidence(), c.trim_at(6.0), c.pi_i
+    c.tracker.bias = 0.4
+    assert trim0 != 0.0 and conf0 > 0.2
+    c.reset_model(0.5)
+    assert 0.0 < c.model.confidence() < conf0
+    assert abs(c.trim_at(6.0) - 0.5 * trim0) < 1e-6 and abs(c.pi_i - 0.5 * pi0) < 1e-6
+    assert abs(c.tracker.bias - 0.2) < 1e-9
+    json.dumps(c.export_state())                                 # still serialisable
+    c.reset_model(1.0)                                           # full reset as before
+    assert c.model.confidence() == 0.0 or c.model.confidence() < 0.01
+    assert c.trim == {} and c.pi_i == 0.0 and c.tracker.bias == 0.0

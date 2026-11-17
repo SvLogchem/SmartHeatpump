@@ -60,6 +60,15 @@ class HouseModel:
         self.windows_room = self.windows_floor = 0
         self.c_adapt = 0.0
 
+    def shrink(self, keep: float) -> None:
+        """Partial reset: keep only this share of what was learned (the rest is learned again)."""
+        self.room.shrink(keep)
+        self.floor.shrink(keep)
+        self.windows_room = int(self.windows_room * keep)
+        self.windows_floor = int(self.windows_floor * keep)
+        self.c_adapt *= keep
+        self._cache = None
+
     def learn_room(self, dtr_dt: float, f_minus_tr: float, tr_minus_to: float, sun: float) -> None:
         self.room.update([f_minus_tr, -tr_minus_to, sun, 1.0], dtr_dt - self.c_adapt)
         self.windows_room += 1

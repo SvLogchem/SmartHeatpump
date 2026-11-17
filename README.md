@@ -80,6 +80,10 @@ Alles wordt bewaard na een herstart. Het verbruik komt uit dezelfde meting als d
 
 Met een echte vloersensor weet de regeling hoeveel warmte de vloer heeft ten opzichte van wat nodig is om de woonkamer op het doel te houden (`sensor.slimme_wp_vloer_warmtetekort`). Is de vloer te koud, dan start de tekort-boost; is de vloer vol, dan stopt de boost en blijft de pomp op laag toerental, ook als de kamer nog even achterloopt. Het doel is steeds de woonkamertemperatuur; de vloer bepaalt hoe hard er gestookt moet worden. "Vol" wordt alleen geloofd als de kamer ook echt reageert (het doel binnen ongeveer 3 uur haalt); klopt het geleerde model niet, dan blijft de boost doorgaan.
 
+## Gedeeltelijk opnieuw aanleren
+
+Zitten er fouten in wat de regeling geleerd heeft (bijvoorbeeld na een nieuwe sensor of veel wijzigingen), dan hoef je niet alles weg te gooien. Stel met `Opnieuw Aanleren Percentage` in hoeveel opnieuw geleerd moet worden (standaard 50%) en druk op `Opnieuw Aanleren Starten`. Dat percentage van het huis- en vloermodel, de avondcorrectie, de stooklijncorrectie en de bijsturing wordt vergeten; de rest blijft. Het model vertrouwt daarna minder op oude gegevens en past zich sneller aan. 100% is een volledige reset, net als de actie `slimme_warmtepomp.reset_model` (met optioneel `percentage`). De frequentietabel, ontdooi- en prijsleren blijven altijd behouden.
+
 ## De stooklijn leert zelf bij
 
 Blijft de kamer structureel te koud (of te warm) buiten de tolerantie, gemiddeld over enkele uren, dan schuift de regeling de geleerde stooklijn zelf op voor die buitentemperatuur, in blokken van 3 °C met vloeiende overgang. Geplande dips (prijssturing, uitlopen) binnen de tolerantie tellen niet mee. Zo begint de regeling elke dag op het juiste niveau en zijn er geen extra correcties nodig. Zichtbaar als `sensor.slimme_wp_stooklijn_correctie`, bewaard bij een herstart en gewist bij "model resetten". Er wordt niet geleerd bij een open raam, afwezigheid, handmatig overschrijven, ontdooien of als leren uit staat.
@@ -168,3 +172,6 @@ Alle bestaande entiteiten behouden hun id en unique id, instellingen blijven bew
 pip install pytest
 pytest              # ca. 2 minuten; de simulatie draait weken regeltijd
 ```
+
+### Frequentietabel leert alleen bij rust (v2.12.0)
+De tabel "frequentie per verschil" leert alleen nog als frequentie én verschil (setpoint − retour) de laatste ~8 minuten stabiel waren. Overgangen (bijv. 45 Hz direct na een boost, terwijl de compressor nog terugloopt) worden dus niet meer geleerd.

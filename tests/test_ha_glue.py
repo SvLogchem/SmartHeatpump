@@ -312,3 +312,13 @@ def test_icing_notification_is_sent_once_per_12_hours(setup):
     ids = {e.entity_id for _, e in h.entities}
     assert {"sensor.slimme_wp_ijsvorming", "sensor.slimme_wp_volgende_ontdooi",
             "binary_sensor.slimme_wp_ijsvorming_alarm"} <= ids
+
+
+def test_relearn_button_uses_percentage_setting(setup):
+    h, entry, c = setup
+    by_uid = {e._attr_unique_id: e for _, e in h.entities}
+    assert "button.slimme_wp_opnieuw_aanleren" in {e.entity_id for _, e in h.entities}
+    c.controller.pi_i, c.controller.trim = 2.0, {2: 1.0}
+    run(by_uid["abc123_herleer_percentage"].async_set_native_value(50.0))
+    run(by_uid["abc123_opnieuw_aanleren"].async_press())
+    assert abs(c.controller.pi_i - 1.0) < 1e-6 and abs(c.controller.trim[2] - 0.5) < 1e-6

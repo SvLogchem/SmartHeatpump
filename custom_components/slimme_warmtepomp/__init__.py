@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
+
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -13,7 +15,7 @@ from .coordinator import SmartHeatpumpCoordinator
 from .engine.settings import REMOVED_NUMBER_KEYS
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = ["sensor", "number", "binary_sensor", "climate", "switch"]
+PLATFORMS = ["sensor", "number", "binary_sensor", "climate", "switch", "button"]
 
 type SlimmeConfigEntry = ConfigEntry[SmartHeatpumpCoordinator]
 
@@ -23,9 +25,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         for entry in hass.config_entries.async_entries(DOMAIN):
             coordinator = getattr(entry, "runtime_data", None)
             if coordinator is not None:
-                await coordinator.async_reset_model()
+                await coordinator.async_reset_model(float(call.data.get("percentage", 100)))
 
-    hass.services.async_register(DOMAIN, SERVICE_RESET_MODEL, _reset)
+    hass.services.async_register(DOMAIN, SERVICE_RESET_MODEL, _reset, schema=vol.Schema(
+        {vol.Optional("percentage", default=100): vol.All(vol.Coerce(float), vol.Range(min=1, max=100))}))
     return True
 
 
