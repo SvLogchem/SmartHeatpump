@@ -26,6 +26,7 @@ COP_MIN, COP_MAX = 0.5, 8.0  # anything outside is a measurement artefact, not a
 S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
 START_GAP = 2.8        # K above the measured water temperature that makes the compressor start (pump starts at ~2.5)
+COAST_GAP_MIN = 2.5
 COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
 KI_UP, KI_DOWN, PI_MAX = 1.0, 0.5, 6.0   # a persistent shortfall is corrected quickly and over a wide range
 TRIM_RATE, TRIM_TAU_H, TRIM_BIN, TRIM_MIN, TRIM_MAX = 0.2, 6.0, 3.0, -4.0, 6.0   # curve trim: K per hour per K of lasting error, averaging time h, bin width K, limits K
@@ -216,6 +217,7 @@ class SmartController:
     def _reset_runtime(self) -> None:
         self._win: list = []
         self._tr_win: list = []
+        self._tr_rate = 0.0
         self._e_ema = 0.0
         self._floor_gap: float | None = None
         self._to_now: float | None = None
@@ -675,7 +677,7 @@ class SmartController:
                     s_min=s["min_setpoint"], s_max=s_max, bedtime=bedtime, quiet_fn=quiet_fn,
                     quiet_boost=s["stille_boost_max"], tol_low=s["tolerantie_laag"],
                     tol_high=s["tolerantie_hoog"], d_max=s["voorverwarm_max"],
-                    bias=self.tracker.bias, hard_min_room=s["min_kamertemp"],
+                    bias=self.tracker.bias + self.trim_at(to_now), hard_min_room=s["min_kamertemp"],
                     allow_coast=True, mode=mode, gap_cap_fn=gap_cap_fn,
                     quiet_energy_mult=1.0 + 2.0 * s["stille_voorkeur"]))
                 self._plan_key = key
@@ -694,6 +696,11 @@ class SmartController:
         over = tr > sp_now + s["tolerantie_hoog"]
         grid_block = self._grid_limiter(inp, s, now)
         d.grid_limited = grid_block
+        # room trend over the last ~40 min (K/h)
+        th = now.timestamp() / 3600.0
+        self._tr_win = [x for x in self._tr_win if th - x[0] <= 0.67] + [(th, tr)]
+        self._tr_rate = (_slope([x[0] for x in self._tr_win], [x[1] for x in self._tr_win])
+                         if len(self._tr_win) >= 5 and th - self._tr_win[0][0] >= 0.25 else 0.0)
         # floor heat check: how far the measured floor is below the temperature that holds the room at its target
         floor_gap = None
         if use_learned and f_known and inp.floor is not None and self.f_est is not None:   # real floor sensor only
@@ -734,18 +741,16 @@ class SmartController:
             # The pump only stops its compressor once the water is ~2 K above its setpoint (seen in
             # real history: stop at +2.0, start at -2.5). A setpoint of "return - 1" therefore kept the
             # compressor running at minimum frequency for up to an hour into the quiet hours.
-            raw = _clamp((x_meas - COAST_GAP) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
+            fl = self.mod.floor()
+            gap_c = max(COAST_GAP_MIN, 1.0 - fl) if fl is not None and fl < 0 else COAST_GAP    # learned stop gap + 1 K
+            raw = _clamp((x_meas - gap_c) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
             d.reason = ("zomermodus" if self.summer else "raam_open" if window_active
                         else "netlimiet" if grid_block else "dure_stroom" if cap_coast
                         else "te_warm" if over else "uitlopen" if pl.coast_now else "wacht_draaitijd")
         else:
             e = sp_now - tr
-            # room trend over the last ~40 min: no extra push while the room is already recovering by itself
-            th = now.timestamp() / 3600.0
-            self._tr_win = [x for x in self._tr_win if th - x[0] <= 0.67] + [(th, tr)]
-            rate = (_slope([x[0] for x in self._tr_win], [x[1] for x in self._tr_win])
-                    if len(self._tr_win) >= 5 and th - self._tr_win[0][0] >= 0.25 else 0.0)
-            if e > 0.3 and rate < 0.15:
+            # no extra push while the room is already recovering by itself
+            if e > 0.3 and self._tr_rate < 0.15:
                 ki = KI_UP
             elif e < -0.1:
                 ki = KI_DOWN
@@ -864,17 +869,20 @@ class SmartController:
         if not inp.boost_enabled or blocked or x_meas is None or not inp.hvac_on:
             self._boost = self._boost_since = self._deficit_since = None
             return None
+        # "floor full" is only believed while the room really responds (reaches the target within ~3 h);
+        # otherwise the learned floor model is wrong and the floor is not warm enough after all
+        rising = self._tr_rate >= max(deficit, 0.0) / 3.0
         trigger = s["boost_tekort"] * (2.0 if in_quiet else 1.0)      # at night only for a clear shortfall
         if self._boost is None:
             self._deficit_since = (self._deficit_since or now) if deficit >= trigger else None
             if (self._deficit_since and now - self._deficit_since >= timedelta(minutes=s["boost_wachttijd"])
                     and (self._boost_next is None or now >= self._boost_next)
-                    and (floor_gap is None or floor_gap >= 0.5)):      # floor already full of heat: no push needed
+                    and not (floor_gap is not None and floor_gap < 0.5 and rising)):   # floor full and room responding
                 self._boost, self._boost_since = "boost", now
         elif self._boost == "boost":
             # With a floor sensor and a learned model the target is calculated (the floor is full); the fixed
             # return target is then only a fallback, the pump's maximum water temperature the safety limit.
-            reached = (floor_gap <= 0.0 or x_meas >= s_max - 0.5) if floor_gap is not None \
+            reached = ((floor_gap <= 0.0 and rising) or x_meas >= s_max - 0.5) if floor_gap is not None \
                 else x_meas >= min(s["boost_retour"], s_max)
             if reached or deficit <= 0.05 or now - self._boost_since >= timedelta(minutes=120):
                 self._boost, self._boost_since = "hold", now

@@ -955,15 +955,20 @@ def test_heating_curve_learns_a_lasting_correction_and_keeps_it():
 
 
 def test_boost_follows_measured_floor_heat():
-    base = dict(room=19.9, outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4})
+    base = dict(outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4})
     cold = SmartController()                                      # floor sensor reads low: floor lacks heat -> boost
-    d = _boost_run(cold, 0, 40, floor=19.0, **base)
+    d = _boost_run(cold, 0, 40, floor=19.0, room=19.9, **base)
     assert d.boost == "boost" and cold._floor_gap is not None and cold._floor_gap >= 0.5
-    warm = SmartController()                                      # floor already warm enough: circulate, no push
-    d = _boost_run(warm, 0, 40, floor=30.0, **base)
+    warm = SmartController()                                      # floor warm AND room responding: no push
+    for m in range(40):
+        d = warm.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=30.0, room=19.7 + 0.01 * m, **base))
     assert d.boost is None and warm._floor_gap is not None and warm._floor_gap < 0.5
-    d = _boost_run(cold, 40, 5, floor=30.0, **base)               # floor filled during the boost -> hold
-    assert d.boost == "hold"
+    d = _boost_run(cold, 40, 5, floor=30.0, room=19.9, **base)    # floor warm but the room does not respond: stays on
+    assert d.boost == "boost"
+    flat = SmartController()                                      # model says full, room stays cold: do not trust it
+    d = _boost_run(flat, 0, 40, floor=30.0, room=19.9, **base)
+    assert d.boost == "boost"
+
 
 
 def test_boost_target_is_calculated_with_floor_model_not_fixed_30():
@@ -973,3 +978,16 @@ def test_boost_target_is_calculated_with_floor_model_not_fixed_30():
     assert d.boost == "boost"
     d = _boost_run(c, 40, 5, floor=19.0, **base)                  # return above 30 but the floor is still cold
     assert d.boost == "boost"                                      # fixed 30 does not end it
+
+
+def test_room_prediction_has_no_gap_at_night():
+    """After bedtime no bedtime is in the horizon: the check moves to the next rise of the comfort setpoint."""
+    m = HouseModel()
+    now = datetime(2026, 11, 12, 23, 0, tzinfo=TZ)
+    f_eq = m.floor_equilibrium(20.0, 4.0, 0.0)
+    inp = _plan_input(m, lambda t: 4.0, now, 20.0, f_eq, bedtime=False)
+    inp.sp_fn = lambda t: 20.4 if 9 <= t.hour < 21 else 20.0
+    res = plan(inp)
+    assert res.tr_check is not None
+    evening = plan(_plan_input(m, lambda t: 4.0, datetime(2026, 11, 12, 15, 0, tzinfo=TZ), 20.0, f_eq))
+    assert evening.tr_check is not None                          # unchanged: one hour after bedtime

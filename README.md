@@ -78,7 +78,7 @@ Alles wordt bewaard na een herstart. Het verbruik komt uit dezelfde meting als d
 
 ## Vloer als maatstaf (met vloersensor)
 
-Met een echte vloersensor weet de regeling hoeveel warmte de vloer heeft ten opzichte van wat nodig is om de woonkamer op het doel te houden (`sensor.slimme_wp_vloer_warmtetekort`). Is de vloer te koud, dan start de tekort-boost; is de vloer vol, dan stopt de boost en blijft de pomp op laag toerental, ook als de kamer nog even achterloopt. Het doel is steeds de woonkamertemperatuur; de vloer bepaalt hoe hard er gestookt moet worden.
+Met een echte vloersensor weet de regeling hoeveel warmte de vloer heeft ten opzichte van wat nodig is om de woonkamer op het doel te houden (`sensor.slimme_wp_vloer_warmtetekort`). Is de vloer te koud, dan start de tekort-boost; is de vloer vol, dan stopt de boost en blijft de pomp op laag toerental, ook als de kamer nog even achterloopt. Het doel is steeds de woonkamertemperatuur; de vloer bepaalt hoe hard er gestookt moet worden. "Vol" wordt alleen geloofd als de kamer ook echt reageert (het doel binnen ongeveer 3 uur haalt); klopt het geleerde model niet, dan blijft de boost doorgaan.
 
 ## De stooklijn leert zelf bij
 
