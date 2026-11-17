@@ -43,6 +43,12 @@ NUMBER_SPECS: list[tuple] = [
     ("max_freq_stil", "Slimme WP Max Frequentie Stille Uren (0 = uit)", 0.0, 120.0, 5.0, "Hz", 50.0, "core"),
     ("ontdooi_wachttijd", "Slimme WP Wachttijd Na Ontdooien", 0.0, 15.0, 1.0, "min", 3.0, "core"),
     ("modulatie_marge", "Slimme WP Modulatie Marge", 0.0, 2.0, 0.1, "°C", 0.3, "core"),
+    # --- tekort-boost: blijft de kamer te koud, dan eerst krachtig opwarmen en daarna zacht aanhouden ---
+    ("boost_tekort", "Slimme WP Boost Bij Tekort", 0.2, 2.0, 0.1, "°C", 0.4, "core"),
+    ("boost_wachttijd", "Slimme WP Boost Wachttijd", 10.0, 120.0, 5.0, "min", 30.0, "core"),
+    ("boost_retour", "Slimme WP Boost Doel Retourtemperatuur", 24.0, 38.0, 1.0, "°C", 30.0, "core"),
+    ("boost_freq", "Slimme WP Boost Frequentie", 35.0, 80.0, 5.0, "Hz", 50.0, "core"),
+    ("boost_pauze", "Slimme WP Boost Pauze Tussen Boosts", 15.0, 240.0, 5.0, "min", 60.0, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),
     ("pv_drempel", "Slimme WP Zonnepanelen Drempel", 200.0, 8000.0, 100.0, "W", 1500.0, "core"),
     # --- open ramen/deuren, aanwezigheid, netlimiet (optioneel) ---
@@ -66,6 +72,7 @@ SWITCH_SPECS: list[tuple] = [
     ("prijssturing_actief", "Slimme WP Prijssturing Actief", True, "mdi:currency-eur", "core"),
     ("modulatie_actief", "Slimme WP Zacht Draaien Actief", True, "mdi:speedometer-slow", "core"),
     ("kosten_vaste_prijs", "Slimme WP Kosten Met Vaste Prijs", True, "mdi:currency-eur", "core"),
+    ("tekort_boost_actief", "Slimme WP Tekort Boost Actief", True, "mdi:rocket-launch", "core"),
     ("vorstbeveiliging_actief", "Slimme WP Vorstbeveiliging Actief", True, "mdi:snowflake-alert", "core"),
     ("dhw_actief", "Slimme WP Tapwatersturing Actief", True, "mdi:water-boiler", "dhw"),
 ]
