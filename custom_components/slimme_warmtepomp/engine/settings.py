@@ -43,10 +43,12 @@ NUMBER_SPECS: list[tuple] = [
     ("max_freq_stil", "Slimme WP Max Frequentie Stille Uren (0 = uit)", 0.0, 120.0, 5.0, "Hz", 50.0, "core"),
     ("ontdooi_wachttijd", "Slimme WP Wachttijd Na Ontdooien", 0.0, 15.0, 1.0, "min", 3.0, "core"),
     ("modulatie_marge", "Slimme WP Modulatie Marge", 0.0, 2.0, 0.1, "°C", 0.3, "core"),
+    ("stook_min", "Slimme WP Minimaal Setpoint Bij Verwarmen (0 = uit)", 0.0, 40.0, 1.0, "°C", 0.0, "core"),
+    ("herleer_percentage", "Slimme WP Opnieuw Aanleren Percentage", 10.0, 100.0, 10.0, "%", 50.0, "core"),
     # --- tekort-boost: blijft de kamer te koud, dan eerst krachtig opwarmen en daarna zacht aanhouden ---
     ("boost_tekort", "Slimme WP Boost Bij Tekort", 0.2, 2.0, 0.1, "°C", 0.4, "core"),
     ("boost_wachttijd", "Slimme WP Boost Wachttijd", 10.0, 120.0, 5.0, "min", 30.0, "core"),
-    ("boost_retour", "Slimme WP Boost Doel Retourtemperatuur", 24.0, 38.0, 1.0, "°C", 30.0, "core"),
+    ("boost_retour", "Slimme WP Boost Doel Retour (Zonder Vloermodel)", 24.0, 38.0, 1.0, "°C", 30.0, "core"),
     ("boost_freq", "Slimme WP Boost Frequentie", 35.0, 80.0, 5.0, "Hz", 50.0, "core"),
     ("boost_pauze", "Slimme WP Boost Pauze Tussen Boosts", 15.0, 240.0, 5.0, "min", 60.0, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),

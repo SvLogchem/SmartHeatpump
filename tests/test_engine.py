@@ -858,6 +858,7 @@ def test_shortfall_boost_pushes_water_up_then_holds_minimum_frequency():
     assert not d.boosting                                     # shortfall not yet long enough
     d = _boost_run(c, 20, 20, **base)                         # 0.5 K short for > 30 min
     assert d.boost == "boost" and d.boosting and d.reason.startswith("tekort_boost")
+    assert "gaat voor" in d.diag["plan_reden"]
     assert d.setpoint_raw >= 24.5 + 2.8 and not d.coasting     # gap that makes the pump ramp up
     d = _boost_run(c, 40, 5, **{**base, "ret": 30.5, "flow": 33.0})          # target return reached
     assert d.boost == "hold" and d.reason == "tekort_aanhouden"
@@ -889,3 +890,128 @@ def test_start_kick_when_room_is_cold_but_compressor_idle():
     for m in range(0, 6):
         d = c.step(_inp(_t(m), **kw))
     assert d.setpoint >= 22.5 + 2.5 and not d.coasting
+
+
+def test_minimum_heating_setpoint_raises_low_curve_but_follows_frequency_gap():
+    kw = dict(room=19.4, outside=5.7, switch_state="on", target_current=24.0, freq=40.0,
+              settings={"setpoint_dag": 20.4})
+    base = SmartController()
+    b = None
+    for m in range(6):
+        b = base.step(_inp(_t(m), flow=27.0, ret=24.0, **kw))
+    c = SmartController()
+    for m in range(6):
+        d = c.step(_inp(_t(m), flow=27.0, ret=24.0, **{**kw, "settings": {**kw["settings"], "stook_min": 31.0}}))
+    assert d.setpoint_raw >= 24.0 + 2.8 and d.setpoint_raw <= 31.0     # climbs with the return, no jump to 31 at once
+    e = SmartController()
+    for m in range(6):
+        f = e.step(_inp(_t(m), flow=32.0, ret=30.0, **{**kw, "settings": {**kw["settings"], "stook_min": 31.0}}))
+    assert f.setpoint_raw >= 30.9                                       # return near 30: setpoint is the 31 minimum
+    g = SmartController()
+    for m in range(6):                                                  # room above target: minimum not applied
+        h = g.step(_inp(_t(m), flow=27.0, ret=24.0, **{**kw, "room": 20.6, "settings": {**kw["settings"], "stook_min": 31.0}}))
+    assert h.setpoint_raw < 31.0
+
+
+def test_persistent_shortfall_raises_setpoint_by_itself_beyond_old_limit():
+    """Real history: room 0.8-0.9 K under target all day while the setpoint stayed at 23-25."""
+    kw = dict(room=19.6, outside=6.0, flow=27.0, ret=24.5, switch_state="on", target_current=24.0, freq=35.0,
+              settings={"setpoint_dag": 20.4, "boost_tekort": 2.0})      # boost off here: only the integrator acts
+    c = SmartController()
+    first = c.step(_inp(_t(0), **kw))
+    for m in range(1, 240):
+        d = c.step(_inp(_t(m), **kw))
+    assert c.pi_i > 2.0 and c.pi_i <= 6.0                       # old limit was 2 K
+    assert d.setpoint_raw > first.setpoint_raw + 1.5
+    r = SmartController()                                         # room already recovering: no extra push
+    for m in range(0, 120):
+        r.step(_inp(_t(m), **{**kw, "room": 19.4 + 0.004 * m}))
+    assert r.pi_i < c.pi_i
+
+
+def test_heating_curve_learns_a_lasting_correction_and_keeps_it():
+    import json
+    kw = dict(room=19.6, outside=6.0, flow=27.0, ret=24.5, switch_state="on", target_current=24.0, freq=35.0,
+              settings={"setpoint_dag": 20.4, "boost_tekort": 2.0})
+    c = SmartController()
+    for m in range(0, 1440):                                    # 24 h with a constant 0.8 K shortfall
+        d = c.step(_inp(_t(m), **kw))
+    assert c.trim_at(6.0) > 1.0                                  # the curve itself moved up
+    assert d.diag["stooklijn_correctie"] > 1.0
+    again = SmartController()
+    again.import_state(json.loads(json.dumps(c.export_state())))
+    assert abs(again.trim_at(6.0) - c.trim_at(6.0)) < 0.01       # survives a restart
+    # correction learned at 6 degrees also acts nearby, and nothing is invented far away without data
+    assert again.trim_at(5.0) > 0.0
+    fresh = SmartController()
+    assert fresh.trim_at(6.0) == 0.0
+    # too warm for a long time pulls it back down
+    w = SmartController()
+    w.import_state(json.loads(json.dumps(c.export_state())))
+    before = w.trim_at(6.0)
+    for m in range(1440, 2880):
+        w.step(_inp(_t(m), **{**kw, "room": 22.2}))
+    assert w.trim_at(6.0) < before
+
+
+def test_boost_follows_measured_floor_heat():
+    base = dict(outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4})
+    cold = SmartController()                                      # floor sensor reads low: floor lacks heat -> boost
+    d = _boost_run(cold, 0, 40, floor=19.0, room=19.9, **base)
+    assert d.boost == "boost" and cold._floor_gap is not None and cold._floor_gap >= 0.5
+    warm = SmartController()                                      # floor warm AND room responding: no push
+    for m in range(40):
+        d = warm.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=30.0, room=19.7 + 0.01 * m, **base))
+    assert d.boost is None and warm._floor_gap is not None and warm._floor_gap < 0.5
+    d = _boost_run(cold, 40, 5, floor=30.0, room=19.9, **base)    # floor warm but the room does not respond: stays on
+    assert d.boost == "boost"
+    flat = SmartController()                                      # model says full, room stays cold: do not trust it
+    d = _boost_run(flat, 0, 40, floor=30.0, room=19.9, **base)
+    assert d.boost == "boost"
+
+
+
+def test_boost_target_is_calculated_with_floor_model_not_fixed_30():
+    base = dict(room=19.9, outside=6.0, flow=37.0, ret=33.0, freq=30.0, settings={"setpoint_dag": 20.4})
+    c = SmartController()
+    d = _boost_run(c, 0, 40, floor=19.0, **{**base, "ret": 24.5, "flow": 27.0})
+    assert d.boost == "boost"
+    d = _boost_run(c, 40, 5, floor=19.0, **base)                  # return above 30 but the floor is still cold
+    assert d.boost == "boost"                                      # fixed 30 does not end it
+
+
+def test_room_prediction_has_no_gap_at_night():
+    """After bedtime no bedtime is in the horizon: the check moves to the next rise of the comfort setpoint."""
+    m = HouseModel()
+    now = datetime(2026, 11, 12, 23, 0, tzinfo=TZ)
+    f_eq = m.floor_equilibrium(20.0, 4.0, 0.0)
+    inp = _plan_input(m, lambda t: 4.0, now, 20.0, f_eq, bedtime=False)
+    inp.sp_fn = lambda t: 20.4 if 9 <= t.hour < 21 else 20.0
+    res = plan(inp)
+    assert res.tr_check is not None
+    evening = plan(_plan_input(m, lambda t: 4.0, datetime(2026, 11, 12, 15, 0, tzinfo=TZ), 20.0, f_eq))
+    assert evening.tr_check is not None                          # unchanged: one hour after bedtime
+
+
+def test_partial_relearn_keeps_the_share_that_was_not_reset():
+    import json
+    c = SmartController()
+    kw = dict(room=19.6, outside=6.0, flow=27.0, ret=24.5, switch_state="on", target_current=24.0, freq=35.0,
+              settings={"setpoint_dag": 20.4, "boost_tekort": 2.0})
+    for m in range(0, 1440):
+        c.step(_inp(_t(m), **kw))
+    # feed the model a little so there is something to forget
+    for i in range(400):
+        c.model.learn_room(0.05, 2.0 + 0.001 * i, 14.0, 0.2)
+        c.model.learn_floor(0.3, 1.0 + 0.001 * i, 2.0)
+    conf0, trim0, pi0 = c.model.confidence(), c.trim_at(6.0), c.pi_i
+    c.tracker.bias = 0.4
+    assert trim0 != 0.0 and conf0 > 0.2
+    c.reset_model(0.5)
+    assert 0.0 < c.model.confidence() < conf0
+    assert abs(c.trim_at(6.0) - 0.5 * trim0) < 1e-6 and abs(c.pi_i - 0.5 * pi0) < 1e-6
+    assert abs(c.tracker.bias - 0.2) < 1e-9
+    json.dumps(c.export_state())                                 # still serialisable
+    c.reset_model(1.0)                                           # full reset as before
+    assert c.model.confidence() == 0.0 or c.model.confidence() < 0.01
+    assert c.trim == {} and c.pi_i == 0.0 and c.tracker.bias == 0.0

@@ -1,3 +1,14 @@
 reset_model:
   name: Reset geleerd model
   description: Wis het geleerde huis- en vloermodel en de avondcorrectie. Het model leert daarna opnieuw (enkele dagen).
+  fields:
+    percentage:
+      name: Percentage opnieuw aanleren
+      description: Hoeveel van het geleerde (huis- en vloermodel, avondcorrectie, stooklijncorrectie, bijsturing) opnieuw geleerd moet worden. 100 = alles.
+      default: 100
+      selector:
+        number:
+          min: 10
+          max: 100
+          step: 10
+          unit_of_measurement: "%"

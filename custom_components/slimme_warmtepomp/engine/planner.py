@@ -110,7 +110,8 @@ def plan(inp: PlanInput) -> PlanResult:
     if bed_idx is not None:
         idxs = range(bed_idx, min(n, bed_idx + 12))
         f_target = sum(m.floor_equilibrium(sp[i], to[i], 0.0) for i in idxs) / len(idxs) + inp.bias
-    check_idx = None if bed_idx is None else min(n - 1, bed_idx + STEP_H)
+    # prediction check: one hour after bedtime, or (at night) when the comfort setpoint rises again
+    check_idx = min(n - 1, bed_idx + STEP_H) if bed_idx is not None else up_idx
 
     ea = math.exp(-p.alpha * DT)
     w_off, s_min, s_max = inp.w_offset, inp.s_min, inp.s_max

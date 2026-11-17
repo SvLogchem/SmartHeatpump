@@ -76,12 +76,32 @@ De integratie houdt zelf per dag, week, maand en jaar bij wat de pomp verbruikt 
 
 Alles wordt bewaard na een herstart. Het verbruik komt uit dezelfde meting als de energiesensoren (compressor en ventilator, niet de circulatiepomp).
 
+## Vloer als maatstaf (met vloersensor)
+
+Met een echte vloersensor weet de regeling hoeveel warmte de vloer heeft ten opzichte van wat nodig is om de woonkamer op het doel te houden (`sensor.slimme_wp_vloer_warmtetekort`). Is de vloer te koud, dan start de tekort-boost; is de vloer vol, dan stopt de boost en blijft de pomp op laag toerental, ook als de kamer nog even achterloopt. Het doel is steeds de woonkamertemperatuur; de vloer bepaalt hoe hard er gestookt moet worden. "Vol" wordt alleen geloofd als de kamer ook echt reageert (het doel binnen ongeveer 3 uur haalt); klopt het geleerde model niet, dan blijft de boost doorgaan.
+
+## Gedeeltelijk opnieuw aanleren
+
+Zitten er fouten in wat de regeling geleerd heeft (bijvoorbeeld na een nieuwe sensor of veel wijzigingen), dan hoef je niet alles weg te gooien. Stel met `Opnieuw Aanleren Percentage` in hoeveel opnieuw geleerd moet worden (standaard 50%) en druk op `Opnieuw Aanleren Starten`. Dat percentage van het huis- en vloermodel, de avondcorrectie, de stooklijncorrectie en de bijsturing wordt vergeten; de rest blijft. Het model vertrouwt daarna minder op oude gegevens en past zich sneller aan. 100% is een volledige reset, net als de actie `slimme_warmtepomp.reset_model` (met optioneel `percentage`). De frequentietabel, ontdooi- en prijsleren blijven altijd behouden.
+
+## De stooklijn leert zelf bij
+
+Blijft de kamer structureel te koud (of te warm) buiten de tolerantie, gemiddeld over enkele uren, dan schuift de regeling de geleerde stooklijn zelf op voor die buitentemperatuur, in blokken van 3 °C met vloeiende overgang. Geplande dips (prijssturing, uitlopen) binnen de tolerantie tellen niet mee. Zo begint de regeling elke dag op het juiste niveau en zijn er geen extra correcties nodig. Zichtbaar als `sensor.slimme_wp_stooklijn_correctie`, bewaard bij een herstart en gewist bij "model resetten". Er wordt niet geleerd bij een open raam, afwezigheid, handmatig overschrijven, ontdooien of als leren uit staat.
+
+## Zelfcorrectie bij een aanhoudend tekort
+
+Blijft de kamer onder het doel terwijl het setpoint al een tijd hetzelfde is, dan corrigeert de regeling dat zelf: de bijsturing groeit sneller (1 °C per uur per graad tekort, bereik tot +6 °C) zolang de kamer niet al vanzelf opwarmt. Bij te warm gaat het terugdraaien ook sneller. De correctie wordt bewaard bij een herstart. De frequentiegrens (dag en stille uren) blijft gelden: de pomp gaat stapsgewijs hoger, niet in één keer naar maximaal toerental.
+
+## Minimaal setpoint bij verwarmen
+
+Heeft jouw vloer water van 30 °C of meer nodig, maar kiest het geleerde model lagere waarden (en blijft de kamer daardoor te koud), zet dan `Minimaal Setpoint Bij Verwarmen` op bijvoorbeeld 31 (0 = uit). Zolang de kamer onder het doel zit, wordt het setpoint minstens zo hoog. Het setpoint loopt mee met de retour plus het toegestane frequentieverschil, dus de pomp springt niet in één keer naar maximaal toerental. Daarna blijft de pomp op laag toerental aan. Uitlopen (te warm, dure stroom, open raam) gaat voor.
+
 ## Tekort-boost (kamer blijft te koud)
 
 Blijft de kamer langer dan de wachttijd te koud, dan wacht de regeling niet op de trage bijsturing maar pakt het krachtig aan:
 
-1. **Boost:** het setpoint gaat net zoveel boven de retour dat de compressor naar de boost-frequentie (standaard 50 Hz) draait, en volgt de stijgende retour. Zo loopt de retour snel op naar het doel (standaard 30 °C).
-2. **Aanhouden:** is het doel bereikt, dan blijft de pomp op het laagste toerental (bijv. 30 Hz) draaien zodat de temperatuur niet verder oploopt. Zodra de kamer weer op temperatuur is, neemt de gewone regeling het over.
+1. **Boost:** het setpoint gaat net zoveel boven de retour dat de compressor naar de boost-frequentie (standaard 50 Hz) draait, en volgt de stijgende retour. Zo loopt de retour snel op. Met een vloersensor en geleerd model is het eindpunt berekend: de boost stopt als de vloer genoeg warmte heeft (maximaal de maximale watertemperatuur van de pomp). Zonder vloersensor geldt het vaste doel (standaard 30 °C).
+2. **Aanhouden:** is het doel bereikt (vloer vol, of zonder vloersensor de doel-retour), dan blijft de pomp op het laagste toerental (bijv. 30 Hz) draaien zodat de temperatuur niet verder oploopt. Zodra de kamer weer op temperatuur is, neemt de gewone regeling het over.
 3. **Pauze:** daarna wacht de regeling minstens de pauzetijd voor een volgende boost, om niet steeds te starten.
 
 Prijssturing en geplande stilstand worden overruled zolang er een tekort is. Niet tijdens zomermodus, open ramen of de netlimiet. In de stille uren is het tekort twee keer zo groot nodig. In de stille uren geldt ook de maximale frequentie voor stille uren. Alle waarden zijn number-boxen (`Boost Bij Tekort`, `Boost Wachttijd`, `Boost Doel Retourtemperatuur`, `Boost Frequentie`, `Boost Pauze`), met schakelaar `Tekort Boost Actief` en sensor `binary_sensor.slimme_wp_tekort_boost`.
@@ -152,3 +172,6 @@ Alle bestaande entiteiten behouden hun id en unique id, instellingen blijven bew
 pip install pytest
 pytest              # ca. 2 minuten; de simulatie draait weken regeltijd
 ```
+
+### Frequentietabel leert alleen bij rust (v2.12.0)
+De tabel "frequentie per verschil" leert alleen nog als frequentie én verschil (setpoint − retour) de laatste ~8 minuten stabiel waren. Overgangen (bijv. 45 Hz direct na een boost, terwijl de compressor nog terugloopt) worden dus niet meer geleerd.

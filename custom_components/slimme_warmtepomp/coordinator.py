@@ -80,9 +80,9 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         await self._store.async_save(self.controller.export_state())
         self._saved_at = dt_util.utcnow()
 
-    async def async_reset_model(self) -> None:
+    async def async_reset_model(self, percentage: float = 100.0) -> None:
         async with self._lock:
-            self.controller.reset_model()
+            self.controller.reset_model(min(100.0, max(1.0, percentage)) / 100.0)
         await self.async_save()
         await self.async_request_refresh()
 
