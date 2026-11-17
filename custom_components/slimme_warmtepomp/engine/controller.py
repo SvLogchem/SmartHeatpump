@@ -65,6 +65,7 @@ class Inputs:
     preheat_enabled: bool = True
     price_enabled: bool = True
     frost_enabled: bool = True
+    boost_enabled: bool = True
     cost_fixed_price: bool = True
     modulation_enabled: bool = True
     dhw_enabled: bool = False
@@ -107,6 +108,8 @@ class Decision:
     ice_level: str = "ok"             # ok / let_op / ijs (icing suspected)
     ice_warning: bool = False
     defrost_hold: bool = False        # switch-off postponed: defrost running, just done or expected soon
+    boost: str | None = None          # None / "boost" (push the water up) / "hold" (stay at minimum frequency)
+    boosting: bool = False
     frost: bool = False               # frost protection active: the pump is never switched off
     frost_forced: bool = False        # ... and it had to be switched on
     next_defrost_min: float | None = None
@@ -243,6 +246,10 @@ class SmartController:
         self._tgt_since: datetime | None = None
         self._probe_until: datetime | None = None
         self._probe_next: datetime | None = None
+        self._boost: str | None = None
+        self._boost_since: datetime | None = None
+        self._deficit_since: datetime | None = None
+        self._boost_next: datetime | None = None
 
     def reset_model(self) -> None:
         self.model.reset()
@@ -674,8 +681,13 @@ class SmartController:
         over = tr > sp_now + s["tolerantie_hoog"]
         grid_block = self._grid_limiter(inp, s, now)
         d.grid_limited = grid_block
+        boost = self._boost_step(inp, s, now, tr, sp_now, x_meas, in_quiet, s_max,
+                                 blocked=self.summer or window_active or grid_block)
+        d.boost, d.boosting = boost, boost is not None
         cap_coast = d.expensive and not emergency and tr >= sp_now - s["tolerantie_laag"]
         want_coast = (self.summer or over or cap_coast or pl.coast_now or window_active or grid_block) and not emergency
+        if boost is not None:       # a persistent shortfall beats price and planned coasting (never summer/window/grid)
+            want_coast = bool(self.summer or window_active or grid_block)
         want = "coast" if want_coast else "run"
         if self._heat_state is None:
             self._heat_state, self._heat_since = want, now
@@ -713,16 +725,33 @@ class SmartController:
                 limited = max(base_now, inp.ret + cap)
                 if raw > limited:
                     raw, d.freq_limited = limited, True
+            if boost == "boost":
+                fb = s["boost_freq"]
+                if in_quiet and s["max_freq_stil"] > 0:
+                    fb = min(fb, s["max_freq_stil"])
+                gap = max(2.8, self.mod.gap_cap(fb) or 3.0)
+                raw, d.freq_limited = max(raw, x_meas + gap), False
+            elif boost == "hold":
+                fl = self.mod.floor()
+                raw = x_meas + ((fl + s["modulatie_marge"]) if fl is not None else -1.0)
             raw = _clamp(raw, s["min_setpoint"], s_max)
             if self._prev_s is not None and dt_h > 0:
                 lim = max(0.5, 12.0 * dt_h)
                 raw = _clamp(raw, self._prev_s - lim, self._prev_s + lim)
             self._prev_s = raw
             d.preheating = pl.delta_now > 0
-            d.reason = f"voorverwarmen ({pl.reason})" if d.preheating else (
+            d.reason = (f"tekort_boost (retour naar {s['boost_retour']:.0f})" if boost == "boost"
+                        else "tekort_aanhouden" if boost == "hold"
+                        else f"voorverwarmen ({pl.reason})") if (d.preheating or boost) else (
                 "regelen_geleerd" if wl >= 0.99 else "regelen_stooklijn" if wl <= 0 else "regelen_gemengd")
         d.setpoint_raw = round(raw, 2)
-        d.setpoint = self._quantize(raw, max(inp.setpoint_step, 0.1), inp.target_current, dt_h, now)
+        if boost == "boost" and not d.coasting:
+            # follow the rising water temperature step by step so the compressor keeps its high frequency
+            step = max(inp.setpoint_step, 0.1)
+            d.setpoint = round(raw / step) * step
+            self._q_acc, self._q_last = 0.0, now
+        else:
+            d.setpoint = self._quantize(raw, max(inp.setpoint_step, 0.1), inp.target_current, dt_h, now)
 
         # ---- hard on/off with compressor protection
         sw = inp.switch_state
@@ -741,6 +770,30 @@ class SmartController:
                     d.switch = "on"
         self._finish(d, now)
         return d
+
+    def _boost_step(self, inp: Inputs, s: dict, now: datetime, tr: float, sp_now: float, x_meas,
+                    in_quiet: bool, s_max: float, blocked: bool) -> str | None:
+        """Shortfall boost: when the room stays too cold, push the water up at high frequency until the
+        target return temperature is reached, then stay at minimum frequency so it does not rise further."""
+        deficit = sp_now - tr
+        if not inp.boost_enabled or blocked or x_meas is None or not inp.hvac_on:
+            self._boost = self._boost_since = self._deficit_since = None
+            return None
+        trigger = s["boost_tekort"] * (2.0 if in_quiet else 1.0)      # at night only for a clear shortfall
+        if self._boost is None:
+            self._deficit_since = (self._deficit_since or now) if deficit >= trigger else None
+            if (self._deficit_since and now - self._deficit_since >= timedelta(minutes=s["boost_wachttijd"])
+                    and (self._boost_next is None or now >= self._boost_next)):
+                self._boost, self._boost_since = "boost", now
+        elif self._boost == "boost":
+            if (x_meas >= min(s["boost_retour"], s_max) or deficit <= 0.05
+                    or now - self._boost_since >= timedelta(minutes=120)):
+                self._boost, self._boost_since = "hold", now
+        else:   # hold
+            if deficit <= 0.1 or now - self._boost_since >= timedelta(minutes=180):
+                self._boost, self._boost_since, self._deficit_since = None, None, None
+                self._boost_next = now + timedelta(minutes=s["boost_pauze"])
+        return self._boost
 
     def _frost_check(self, inp, s: dict, now: datetime, d: Decision) -> None:
         """Frost protection: below the outdoor limit (released after 15 min above it) or when the
@@ -782,7 +835,7 @@ class SmartController:
             "avond_laatste_afwijking": _r(self.tracker.last_error),
             "vloer_geschat": _r(self.f_est),
             "vloer_bron": self._floor_src,
-            "vloer_gemeten": _r(self._f_meas),
+            "tekort_boost": self._boost or "uit", "vloer_gemeten": _r(self._f_meas),
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),

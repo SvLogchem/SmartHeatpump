@@ -842,3 +842,39 @@ def test_coasting_setpoint_is_low_enough_for_the_compressor_to_stop():
     d = c.step(_inp(_t(0), room=22.5, ret=26.4, flow=30.0, outside=22.0, freq=30.0))   # over temperature -> coast
     assert d.coasting
     assert 26.4 - d.setpoint_raw >= 2.5 and 26.4 - d.setpoint >= 2.0
+
+
+def _boost_run(c, start_min, minutes, **kw):
+    d = None
+    for m in range(start_min, start_min + minutes):
+        d = c.step(_inp(_t(m), switch_state="on", target_current=23.0, **kw))
+    return d
+
+
+def test_shortfall_boost_pushes_water_up_then_holds_minimum_frequency():
+    c = SmartController()
+    base = dict(room=19.9, outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4})
+    d = _boost_run(c, 0, 20, **base)
+    assert not d.boosting                                     # shortfall not yet long enough
+    d = _boost_run(c, 20, 20, **base)                         # 0.5 K short for > 30 min
+    assert d.boost == "boost" and d.boosting and d.reason.startswith("tekort_boost")
+    assert d.setpoint_raw >= 24.5 + 2.8 and not d.coasting     # gap that makes the pump ramp up
+    d = _boost_run(c, 40, 5, **{**base, "ret": 30.5, "flow": 33.0})          # target return reached
+    assert d.boost == "hold" and d.reason == "tekort_aanhouden"
+    assert 28.0 <= d.setpoint_raw <= 30.5                      # just below the return: stays at minimum frequency
+    d = _boost_run(c, 45, 3, **{**base, "ret": 30.5, "flow": 33.0, "room": 20.5})  # room recovered
+    assert d.boost is None
+
+
+def test_shortfall_boost_needs_switch_and_is_less_eager_at_night():
+    c = SmartController()
+    base = dict(room=19.9, outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4})
+    c.step(_inp(_t(0), switch_state="on", boost_enabled=False, **base))
+    for m in range(1, 45):
+        d = c.step(_inp(_t(m), switch_state="on", boost_enabled=False, **base))
+    assert not d.boosting
+    n = SmartController()                                     # 23:00, 0.4 K short: below the night threshold (2 x 0.4)
+    for m in range(0, 45):
+        d = n.step(_inp(_t(9 * 60 + m), switch_state="on", room=20.0, outside=3.0, flow=27.0, ret=24.5,
+                        freq=30.0, settings={"setpoint_nacht": 20.4}))
+    assert not d.boosting
