@@ -25,6 +25,7 @@ from .solar import sun_gain
 COP_MIN, COP_MAX = 0.5, 8.0  # anything outside is a measurement artefact, not a COP
 S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
+COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
 KP_PLANNED = 0.5       # the planner already anticipates; keep the reactive part gentle      # feedback on top of the model (K per K, K per K*h)
 SAMPLE_MIN = 5
 LEARN_MIN = 15
@@ -686,7 +687,10 @@ class SmartController:
 
         # ---- setpoint
         if d.coasting:
-            raw = _clamp((x_meas - 1.0) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
+            # The pump only stops its compressor once the water is ~2 K above its setpoint (seen in
+            # real history: stop at +2.0, start at -2.5). A setpoint of "return - 1" therefore kept the
+            # compressor running at minimum frequency for up to an hour into the quiet hours.
+            raw = _clamp((x_meas - COAST_GAP) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
             d.reason = ("zomermodus" if self.summer else "raam_open" if window_active
                         else "netlimiet" if grid_block else "dure_stroom" if cap_coast
                         else "te_warm" if over else "uitlopen" if pl.coast_now else "wacht_draaitijd")
