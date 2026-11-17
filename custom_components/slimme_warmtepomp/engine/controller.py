@@ -697,7 +697,10 @@ class SmartController:
         # floor heat check: how far the measured floor is below the temperature that holds the room at its target
         floor_gap = None
         if use_learned and f_known and inp.floor is not None and self.f_est is not None:   # real floor sensor only
-            floor_gap = (self.model.floor_equilibrium(sp_now, to_now, sun_now) + self.trim_at(to_now) - self.f_est)
+            # "full" = the floor temperature that holds the room at its target, plus a little extra to close
+            # a current shortfall in reasonable time (a floor exactly at equilibrium only creeps towards the target)
+            aim = sp_now + 0.7 * min(max(sp_now - tr, 0.0), 1.5)
+            floor_gap = self.model.floor_equilibrium(aim, to_now, sun_now) + self.trim_at(to_now) - self.f_est
         self._floor_gap = floor_gap
         boost = self._boost_step(inp, s, now, tr, sp_now, x_meas, in_quiet, s_max,
                                  blocked=self.summer or window_active or grid_block, floor_gap=floor_gap)
