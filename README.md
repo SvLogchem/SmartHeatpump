@@ -96,8 +96,8 @@ Heeft jouw vloer water van 30 °C of meer nodig, maar kiest het geleerde model l
 
 Blijft de kamer langer dan de wachttijd te koud, dan wacht de regeling niet op de trage bijsturing maar pakt het krachtig aan:
 
-1. **Boost:** het setpoint gaat net zoveel boven de retour dat de compressor naar de boost-frequentie (standaard 50 Hz) draait, en volgt de stijgende retour. Zo loopt de retour snel op naar het doel (standaard 30 °C).
-2. **Aanhouden:** is het doel bereikt, dan blijft de pomp op het laagste toerental (bijv. 30 Hz) draaien zodat de temperatuur niet verder oploopt. Zodra de kamer weer op temperatuur is, neemt de gewone regeling het over.
+1. **Boost:** het setpoint gaat net zoveel boven de retour dat de compressor naar de boost-frequentie (standaard 50 Hz) draait, en volgt de stijgende retour. Zo loopt de retour snel op. Met een vloersensor en geleerd model is het eindpunt berekend: de boost stopt als de vloer genoeg warmte heeft (maximaal de maximale watertemperatuur van de pomp). Zonder vloersensor geldt het vaste doel (standaard 30 °C).
+2. **Aanhouden:** is het doel bereikt (vloer vol, of zonder vloersensor de doel-retour), dan blijft de pomp op het laagste toerental (bijv. 30 Hz) draaien zodat de temperatuur niet verder oploopt. Zodra de kamer weer op temperatuur is, neemt de gewone regeling het over.
 3. **Pauze:** daarna wacht de regeling minstens de pauzetijd voor een volgende boost, om niet steeds te starten.
 
 Prijssturing en geplande stilstand worden overruled zolang er een tekort is. Niet tijdens zomermodus, open ramen of de netlimiet. In de stille uren is het tekort twee keer zo groot nodig. In de stille uren geldt ook de maximale frequentie voor stille uren. Alle waarden zijn number-boxen (`Boost Bij Tekort`, `Boost Wachttijd`, `Boost Doel Retourtemperatuur`, `Boost Frequentie`, `Boost Pauze`), met schakelaar `Tekort Boost Actief` en sensor `binary_sensor.slimme_wp_tekort_boost`.

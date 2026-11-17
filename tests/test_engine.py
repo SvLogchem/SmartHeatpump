@@ -963,3 +963,12 @@ def test_boost_follows_measured_floor_heat():
     assert d.boost is None and warm._floor_gap is not None and warm._floor_gap < 0.5
     d = _boost_run(cold, 40, 5, floor=30.0, **base)               # floor filled during the boost -> hold
     assert d.boost == "hold"
+
+
+def test_boost_target_is_calculated_with_floor_model_not_fixed_30():
+    base = dict(room=19.9, outside=6.0, flow=37.0, ret=33.0, freq=30.0, settings={"setpoint_dag": 20.4})
+    c = SmartController()
+    d = _boost_run(c, 0, 40, floor=19.0, **{**base, "ret": 24.5, "flow": 27.0})
+    assert d.boost == "boost"
+    d = _boost_run(c, 40, 5, floor=19.0, **base)                  # return above 30 but the floor is still cold
+    assert d.boost == "boost"                                      # fixed 30 does not end it

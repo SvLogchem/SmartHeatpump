@@ -867,8 +867,11 @@ class SmartController:
                     and (floor_gap is None or floor_gap >= 0.5)):      # floor already full of heat: no push needed
                 self._boost, self._boost_since = "boost", now
         elif self._boost == "boost":
-            if (x_meas >= min(s["boost_retour"], s_max) or deficit <= 0.05 or (floor_gap is not None and floor_gap <= 0.0)
-                    or now - self._boost_since >= timedelta(minutes=120)):
+            # With a floor sensor and a learned model the target is calculated (the floor is full); the fixed
+            # return target is then only a fallback, the pump's maximum water temperature the safety limit.
+            reached = (floor_gap <= 0.0 or x_meas >= s_max - 0.5) if floor_gap is not None \
+                else x_meas >= min(s["boost_retour"], s_max)
+            if reached or deficit <= 0.05 or now - self._boost_since >= timedelta(minutes=120):
                 self._boost, self._boost_since = "hold", now
         else:   # hold
             if deficit <= 0.1 or now - self._boost_since >= timedelta(minutes=180):

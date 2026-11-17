@@ -47,7 +47,7 @@ NUMBER_SPECS: list[tuple] = [
     # --- tekort-boost: blijft de kamer te koud, dan eerst krachtig opwarmen en daarna zacht aanhouden ---
     ("boost_tekort", "Slimme WP Boost Bij Tekort", 0.2, 2.0, 0.1, "°C", 0.4, "core"),
     ("boost_wachttijd", "Slimme WP Boost Wachttijd", 10.0, 120.0, 5.0, "min", 30.0, "core"),
-    ("boost_retour", "Slimme WP Boost Doel Retourtemperatuur", 24.0, 38.0, 1.0, "°C", 30.0, "core"),
+    ("boost_retour", "Slimme WP Boost Doel Retour (Zonder Vloermodel)", 24.0, 38.0, 1.0, "°C", 30.0, "core"),
     ("boost_freq", "Slimme WP Boost Frequentie", 35.0, 80.0, 5.0, "Hz", 50.0, "core"),
     ("boost_pauze", "Slimme WP Boost Pauze Tussen Boosts", 15.0, 240.0, 5.0, "min", 60.0, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),
