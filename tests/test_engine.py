@@ -858,6 +858,7 @@ def test_shortfall_boost_pushes_water_up_then_holds_minimum_frequency():
     assert not d.boosting                                     # shortfall not yet long enough
     d = _boost_run(c, 20, 20, **base)                         # 0.5 K short for > 30 min
     assert d.boost == "boost" and d.boosting and d.reason.startswith("tekort_boost")
+    assert "gaat voor" in d.diag["plan_reden"]
     assert d.setpoint_raw >= 24.5 + 2.8 and not d.coasting     # gap that makes the pump ramp up
     d = _boost_run(c, 40, 5, **{**base, "ret": 30.5, "flow": 33.0})          # target return reached
     assert d.boost == "hold" and d.reason == "tekort_aanhouden"

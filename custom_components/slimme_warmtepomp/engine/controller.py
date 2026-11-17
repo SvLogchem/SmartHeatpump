@@ -705,6 +705,8 @@ class SmartController:
         boost = self._boost_step(inp, s, now, tr, sp_now, x_meas, in_quiet, s_max,
                                  blocked=self.summer or window_active or grid_block, floor_gap=floor_gap)
         d.boost, d.boosting = boost, boost is not None
+        if boost is not None:       # the planner keeps its own view; say clearly that the shortfall logic is in charge
+            d.diag["plan_reden"] = f"tekort {'boost' if boost == 'boost' else 'aanhouden'} gaat voor (plan: {d.diag.get('plan_reden')})"
         cap_coast = d.expensive and not emergency and tr >= sp_now - s["tolerantie_laag"]
         want_coast = (self.summer or over or cap_coast or pl.coast_now or window_active or grid_block) and not emergency
         if boost is not None:       # a persistent shortfall beats price and planned coasting (never summer/window/grid)
