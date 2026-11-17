@@ -926,3 +926,40 @@ def test_persistent_shortfall_raises_setpoint_by_itself_beyond_old_limit():
     for m in range(0, 120):
         r.step(_inp(_t(m), **{**kw, "room": 19.4 + 0.004 * m}))
     assert r.pi_i < c.pi_i
+
+
+def test_heating_curve_learns_a_lasting_correction_and_keeps_it():
+    import json
+    kw = dict(room=19.6, outside=6.0, flow=27.0, ret=24.5, switch_state="on", target_current=24.0, freq=35.0,
+              settings={"setpoint_dag": 20.4, "boost_tekort": 2.0})
+    c = SmartController()
+    for m in range(0, 1440):                                    # 24 h with a constant 0.8 K shortfall
+        d = c.step(_inp(_t(m), **kw))
+    assert c.trim_at(6.0) > 1.0                                  # the curve itself moved up
+    assert d.diag["stooklijn_correctie"] > 1.0
+    again = SmartController()
+    again.import_state(json.loads(json.dumps(c.export_state())))
+    assert abs(again.trim_at(6.0) - c.trim_at(6.0)) < 0.01       # survives a restart
+    # correction learned at 6 degrees also acts nearby, and nothing is invented far away without data
+    assert again.trim_at(5.0) > 0.0
+    fresh = SmartController()
+    assert fresh.trim_at(6.0) == 0.0
+    # too warm for a long time pulls it back down
+    w = SmartController()
+    w.import_state(json.loads(json.dumps(c.export_state())))
+    before = w.trim_at(6.0)
+    for m in range(1440, 2880):
+        w.step(_inp(_t(m), **{**kw, "room": 22.2}))
+    assert w.trim_at(6.0) < before
+
+
+def test_boost_follows_measured_floor_heat():
+    base = dict(room=19.9, outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4})
+    cold = SmartController()                                      # floor sensor reads low: floor lacks heat -> boost
+    d = _boost_run(cold, 0, 40, floor=19.0, **base)
+    assert d.boost == "boost" and cold._floor_gap is not None and cold._floor_gap >= 0.5
+    warm = SmartController()                                      # floor already warm enough: circulate, no push
+    d = _boost_run(warm, 0, 40, floor=30.0, **base)
+    assert d.boost is None and warm._floor_gap is not None and warm._floor_gap < 0.5
+    d = _boost_run(cold, 40, 5, floor=30.0, **base)               # floor filled during the boost -> hold
+    assert d.boost == "hold"

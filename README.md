@@ -76,6 +76,14 @@ De integratie houdt zelf per dag, week, maand en jaar bij wat de pomp verbruikt 
 
 Alles wordt bewaard na een herstart. Het verbruik komt uit dezelfde meting als de energiesensoren (compressor en ventilator, niet de circulatiepomp).
 
+## Vloer als maatstaf (met vloersensor)
+
+Met een echte vloersensor weet de regeling hoeveel warmte de vloer heeft ten opzichte van wat nodig is om de woonkamer op het doel te houden (`sensor.slimme_wp_vloer_warmtetekort`). Is de vloer te koud, dan start de tekort-boost; is de vloer vol, dan stopt de boost en blijft de pomp op laag toerental, ook als de kamer nog even achterloopt. Het doel is steeds de woonkamertemperatuur; de vloer bepaalt hoe hard er gestookt moet worden.
+
+## De stooklijn leert zelf bij
+
+Blijft de kamer structureel te koud (of te warm) buiten de tolerantie, gemiddeld over enkele uren, dan schuift de regeling de geleerde stooklijn zelf op voor die buitentemperatuur, in blokken van 3 °C met vloeiende overgang. Geplande dips (prijssturing, uitlopen) binnen de tolerantie tellen niet mee. Zo begint de regeling elke dag op het juiste niveau en zijn er geen extra correcties nodig. Zichtbaar als `sensor.slimme_wp_stooklijn_correctie`, bewaard bij een herstart en gewist bij "model resetten". Er wordt niet geleerd bij een open raam, afwezigheid, handmatig overschrijven, ontdooien of als leren uit staat.
+
 ## Zelfcorrectie bij een aanhoudend tekort
 
 Blijft de kamer onder het doel terwijl het setpoint al een tijd hetzelfde is, dan corrigeert de regeling dat zelf: de bijsturing groeit sneller (1 °C per uur per graad tekort, bereik tot +6 °C) zolang de kamer niet al vanzelf opwarmt. Bij te warm gaat het terugdraaien ook sneller. De correctie wordt bewaard bij een herstart. De frequentiegrens (dag en stille uren) blijft gelden: de pomp gaat stapsgewijs hoger, niet in één keer naar maximaal toerental.
