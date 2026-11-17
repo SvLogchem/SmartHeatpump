@@ -878,3 +878,14 @@ def test_shortfall_boost_needs_switch_and_is_less_eager_at_night():
         d = n.step(_inp(_t(9 * 60 + m), switch_state="on", room=20.0, outside=3.0, flow=27.0, ret=24.5,
                         freq=30.0, settings={"setpoint_nacht": 20.4}))
     assert not d.boosting
+
+
+def test_start_kick_when_room_is_cold_but_compressor_idle():
+    """Screenshot case: room 1 K under target, setpoint 24 but return 22.5 -> pump never starts (needs ~2.5 K gap)."""
+    c = SmartController()
+    kw = dict(room=19.4, outside=5.7, flow=22.6, ret=22.5, freq=0.0, switch_state="on", target_current=24.0,
+              settings={"setpoint_dag": 20.4})
+    d = None
+    for m in range(0, 6):
+        d = c.step(_inp(_t(m), **kw))
+    assert d.setpoint >= 22.5 + 2.5 and not d.coasting

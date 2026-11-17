@@ -25,6 +25,7 @@ from .solar import sun_gain
 COP_MIN, COP_MAX = 0.5, 8.0  # anything outside is a measurement artefact, not a COP
 S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
+START_GAP = 2.8        # K above the measured water temperature that makes the compressor start (pump starts at ~2.5)
 COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
 KP_PLANNED = 0.5       # the planner already anticipates; keep the reactive part gentle      # feedback on top of the model (K per K, K per K*h)
 SAMPLE_MIN = 5
@@ -677,6 +678,7 @@ class SmartController:
 
         # ---- decide run / coast (with minimum run and standstill times)
         in_quiet = quiet_fn(now)
+        start_kick = False
         emergency = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - 0.3
         over = tr > sp_now + s["tolerantie_hoog"]
         grid_block = self._grid_limiter(inp, s, now)
@@ -725,6 +727,14 @@ class SmartController:
                 limited = max(base_now, inp.ret + cap)
                 if raw > limited:
                     raw, d.freq_limited = limited, True
+            # Room clearly too cold but the compressor idle (just circulating): a setpoint that is not far
+            # enough above the water temperature never starts the pump, whatever the heating curve says.
+            start_kick = bool(
+                not d.heating and boost is None and x_meas is not None and inp.switch_state != "off"
+                and tr < sp_now - s["tolerantie_laag"] - (0.3 if in_quiet else 0.0)
+                and raw < x_meas + START_GAP)
+            if start_kick:
+                raw = x_meas + START_GAP
             if boost == "boost":
                 fb = s["boost_freq"]
                 if in_quiet and s["max_freq_stil"] > 0:
@@ -745,10 +755,10 @@ class SmartController:
                         else f"voorverwarmen ({pl.reason})") if (d.preheating or boost) else (
                 "regelen_geleerd" if wl >= 0.99 else "regelen_stooklijn" if wl <= 0 else "regelen_gemengd")
         d.setpoint_raw = round(raw, 2)
-        if boost == "boost" and not d.coasting:
+        if (boost == "boost" or start_kick) and not d.coasting:
             # follow the rising water temperature step by step so the compressor keeps its high frequency
             step = max(inp.setpoint_step, 0.1)
-            d.setpoint = round(raw / step) * step
+            d.setpoint = (math.ceil(raw / step - 1e-9) if start_kick else round(raw / step)) * step
             self._q_acc, self._q_last = 0.0, now
         else:
             d.setpoint = self._quantize(raw, max(inp.setpoint_step, 0.1), inp.target_current, dt_h, now)
