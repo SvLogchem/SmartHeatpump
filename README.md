@@ -175,3 +175,6 @@ pytest              # ca. 2 minuten; de simulatie draait weken regeltijd
 
 ### Frequentietabel leert alleen bij rust (v2.12.0)
 De tabel "frequentie per verschil" leert alleen nog als frequentie én verschil (setpoint − retour) de laatste ~8 minuten stabiel waren. Overgangen (bijv. 45 Hz direct na een boost, terwijl de compressor nog terugloopt) worden dus niet meer geleerd.
+
+### Onder de comfortband nooit uitlopen (v2.12.1)
+De planner mag alleen uitlopen (compressor uit) zolang de kamer binnen de comfortband zit (setpoint − tolerantie laag). Zit de kamer er al onder, dan blijft de pomp verwarmen, ook als het model denkt dat de vloer warm genoeg is. De stooklijn-correctie leert daarnaast sneller bij (middeling 4 u i.p.v. 6 u, hogere leersnelheid).

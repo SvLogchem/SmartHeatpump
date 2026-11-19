@@ -30,7 +30,7 @@ COAST_GAP_MIN = 2.5
 SETTLE_MIN = 8.0     # minutes of steady frequency and gap before the frequency table learns
 COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
 KI_UP, KI_DOWN, PI_MAX = 1.0, 0.5, 6.0   # a persistent shortfall is corrected quickly and over a wide range
-TRIM_RATE, TRIM_TAU_H, TRIM_BIN, TRIM_MIN, TRIM_MAX = 0.2, 6.0, 3.0, -4.0, 6.0   # curve trim: K per hour per K of lasting error, averaging time h, bin width K, limits K
+TRIM_RATE, TRIM_TAU_H, TRIM_BIN, TRIM_MIN, TRIM_MAX = 0.35, 4.0, 3.0, -4.0, 6.0   # curve trim: K per hour per K of lasting error, averaging time h, bin width K, limits K
 KP_PLANNED = 0.5       # the planner already anticipates; keep the reactive part gentle      # feedback on top of the model (K per K, K per K*h)
 SAMPLE_MIN = 5
 LEARN_MIN = 15
@@ -732,7 +732,11 @@ class SmartController:
         if boost is not None:       # the planner keeps its own view; say clearly that the shortfall logic is in charge
             d.diag["plan_reden"] = f"tekort {'boost' if boost == 'boost' else 'aanhouden'} gaat voor (plan: {d.diag.get('plan_reden')})"
         cap_coast = d.expensive and not emergency and tr >= sp_now - s["tolerantie_laag"]
-        want_coast = (self.summer or over or cap_coast or pl.coast_now or window_active or grid_block) and not emergency
+        # the planner may only coast inside the comfort band: a room that is already below it (history: 19.4-19.7
+        # for hours against a setpoint of 20.0, because the model thought the floor was warm enough) keeps heating
+        below_band = tr < sp_now - s["tolerantie_laag"]
+        plan_coast = pl.coast_now and not below_band
+        want_coast = (self.summer or over or cap_coast or plan_coast or window_active or grid_block) and not emergency
         if boost is not None:       # a persistent shortfall beats price and planned coasting (never summer/window/grid)
             want_coast = bool(self.summer or window_active or grid_block)
         want = "coast" if want_coast else "run"
@@ -763,7 +767,7 @@ class SmartController:
             raw = _clamp((x_meas - gap_c) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
             d.reason = ("zomermodus" if self.summer else "raam_open" if window_active
                         else "netlimiet" if grid_block else "dure_stroom" if cap_coast
-                        else "te_warm" if over else "uitlopen" if pl.coast_now else "wacht_draaitijd")
+                        else "te_warm" if over else "uitlopen" if plan_coast else "wacht_draaitijd")
         else:
             e = sp_now - tr
             # no extra push while the room is already recovering by itself
