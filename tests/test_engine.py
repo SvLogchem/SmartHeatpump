@@ -1015,3 +1015,13 @@ def test_partial_relearn_keeps_the_share_that_was_not_reset():
     c.reset_model(1.0)                                           # full reset as before
     assert c.model.confidence() == 0.0 or c.model.confidence() < 0.01
     assert c.trim == {} and c.pi_i == 0.0 and c.tracker.bias == 0.0
+
+
+def test_planner_may_not_coast_while_room_is_below_comfort_band():
+    # history: room 19.5 for hours against a setpoint of 20.0 (tolerance 0.2) while the plan said "uitlopen"
+    c = SmartController()
+    t = datetime(2026, 11, 12, 14, 0, tzinfo=TZ)
+    d = None
+    for i in range(12):
+        d = c.step(_inp(t + timedelta(minutes=10 * i), room=19.6, ret=22.0, outside=9.0, switch_state="on"))
+    assert d.reason != "uitlopen"
