@@ -178,3 +178,6 @@ De tabel "frequentie per verschil" leert alleen nog als frequentie én verschil 
 
 ### Onder de comfortband nooit uitlopen (v2.12.1)
 De planner mag alleen uitlopen (compressor uit) zolang de kamer binnen de comfortband zit (setpoint − tolerantie laag). Zit de kamer er al onder, dan blijft de pomp verwarmen, ook als het model denkt dat de vloer warm genoeg is. De stooklijn-correctie leert daarnaast sneller bij (middeling 4 u i.p.v. 6 u, hogere leersnelheid).
+
+### Boost stopt als de vloer vol is (v2.12.2)
+Tijdens "tekort aanhouden" stopt de pomp met extra warmte zodra de gemeten vloer minstens 0,5 K warmer is dan het model nodig vindt en de kamer reageert. Voorheen bleef hij aanhouden tot de kamer op setpoint was, waardoor de vloer te veel warmte kreeg en de kamer tot 21,6 °C opliep.

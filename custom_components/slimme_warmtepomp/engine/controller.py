@@ -908,7 +908,10 @@ class SmartController:
             if reached or deficit <= 0.05 or now - self._boost_since >= timedelta(minutes=120):
                 self._boost, self._boost_since = "hold", now
         else:   # hold
-            if deficit <= 0.1 or now - self._boost_since >= timedelta(minutes=180):
+            # the floor is already warmer than the room needs and the room responds: more heat only overshoots
+            # (history: floor 22 for a room target of 20 -> room 21.6 for hours)
+            floor_full = floor_gap is not None and floor_gap <= -0.5 and rising
+            if deficit <= 0.1 or floor_full or now - self._boost_since >= timedelta(minutes=180):
                 self._boost, self._boost_since, self._deficit_since = None, None, None
                 self._boost_next = now + timedelta(minutes=s["boost_pauze"])
         return self._boost
