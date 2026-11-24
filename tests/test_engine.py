@@ -1148,3 +1148,4 @@ def test_shadow_mode_does_not_report_a_frost_switch_on():
     c = SmartController()
     d = c.step(_inp(_t(0), room=20.0, outside=-6.0, ret=6.0, switch_state="off", hvac_on=False, regeling_actief=False))
     assert not d.frost_forced and d.switch is None
+

@@ -225,3 +225,6 @@ In `vloer_setpoint_tabel` staat per kamerdoel naast `setpoint` (wat naar de pomp
 - "Ontdooit te laat" telt de draaitijd van de compressor sinds de laatste ontdooi, niet de klokduur (geen valse melding na lange stilstand).
 - Een tapwaterrun blijft na een herstart bekend, zodat de maximale looptijd nog geldt en de schakelaar weer uitgaat.
 - In schaduwmodus komt geen valse melding "vorstbeveiliging heeft de pomp ingeschakeld" meer.
+
+### Geplande uitloop vervangen door zacht doordraaien bij zeer koude vloer (v2.15.3)
+Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven) en de gemeten vloer meer dan 1,5 K onder het modelniveau zit, dan blijft de pomp zacht doordraaien. Anders zakt de kamer straks door de koude vloer onder het setpoint en moet de pomp hard opladen. Bij prijs-/netlimiet-uitloop of raam open verandert er niets.
