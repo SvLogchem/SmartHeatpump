@@ -418,8 +418,8 @@ def test_frequency_limit_caps_boost_in_quiet_hours_but_not_by_day_or_in_emergenc
     d = c.step(_inp(day, **kw))
     assert d.setpoint_raw <= 29.0                            # by day the efficient frequency (50 Hz) is the limit
     c = SmartController(); _fill(c)
-    d = c.step(_inp(day, **dict(kw, room=19.6)))
-    assert not d.freq_limited                                # below the comfort band: the full range (80 Hz) is allowed
+    d = c.step(_inp(day, **dict(kw, room=18.9)))
+    assert not d.freq_limited                                # clearly below the comfort band: the full range (80 Hz) is allowed
     c = SmartController(); _fill(c)
     d = c.step(_inp(quiet, **dict(kw, room=15.5)))
     assert not d.freq_limited                                # emergency: comfort first

@@ -27,6 +27,7 @@ S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
 START_GAP = 2.8        # K above the measured water temperature that makes the compressor start (pump starts at ~2.5)
 COAST_GAP_MIN = 2.5
+SEVERE_K = 0.8       # K below the comfort band from which the frequency limit is lifted
 SETTLE_MIN = 8.0     # minutes of steady frequency and gap before the frequency table learns
 COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
 KI_UP, KI_DOWN, PI_MAX = 1.0, 0.5, 6.0   # a persistent shortfall is corrected quickly and over a wide range
@@ -682,7 +683,7 @@ class SmartController:
             # Normal running stays at the efficient boost frequency: a setpoint far above what the pump can reach
             # (history: 38-40 C at 0 C outside, 70 Hz for hours, never back to 30 Hz) only wastes energy. Only a
             # room that is already below its comfort band may use the full frequency range.
-            if fmax > 0 and s["boost_freq"] > 0 and tr >= sp_now - s["tolerantie_laag"]:
+            if fmax > 0 and s["boost_freq"] > 0 and tr >= sp_now - s["tolerantie_laag"] - SEVERE_K:
                 fmax = min(fmax, s["boost_freq"])
             return fmax
 
@@ -722,6 +723,8 @@ class SmartController:
         start_kick = heat_floor = False
         emergency = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - 0.3
         over = tr > sp_now + s["tolerantie_hoog"]
+        # only a clearly cold room lifts the frequency limit; a shortfall of a few tenths stays at the efficient 50 Hz
+        severe = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - SEVERE_K
         grid_block = self._grid_limiter(inp, s, now)
         d.grid_limited = grid_block
         # room trend over the last ~40 min (K/h)
@@ -800,7 +803,7 @@ class SmartController:
             raw, soft = self._soft_running(raw, inp, s, now, e, pl.delta_now, tr, sp_now, in_quiet)
             d.soft = soft
             cap = gap_cap_fn(now)
-            if cap is not None and not soft and inp.ret is not None and not emergency:
+            if cap is not None and not soft and inp.ret is not None and not severe:
                 base_now = s_base(now, to_now, sun_fn(now), sp_now)     # the integrator may not bypass the Hz limit
                 # the house base level may exceed the frequency limit by 2 K at most: a base the pump cannot reach
                 # (history: 38 C at 0 C outside) must not keep it at 70 Hz while "frequentie begrensd" is on

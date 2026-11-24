@@ -191,3 +191,6 @@ Tijdens "tekort aanhouden" stopt de pomp met extra warmte zodra de gemeten vloer
 - De pomp ramt zijn frequentie zelf op zolang het verschil setpoint − retour positief blijft. Staat hij boven de toegestane frequentie, dan verkleint de regeling het verschil met 0,15 K per Hz boven de grens (minimaal 0,3 K), zodat hij echt terugloopt.
 - De frequentietabel is monotoon: een groter verschil toont nooit een lagere frequentie. Opnieuw aanleren wist (of verkleint) nu ook deze tabel.
 - Nieuw attribuut `vloer_setpoint_tabel` (op sensor Setpoint): per buitentemperatuur de vloertemperatuur die de kamer op setpoint houdt en het bijbehorende setpoint naar de warmtepomp. Zichtbaar in dashboard v12.
+
+### Frequentielimiet blijft bij klein tekort (v2.13.1)
+De frequentielimiet (efficiënte boost-frequentie, standaard 50 Hz) wordt pas opgeheven als de kamer meer dan 0,8 K onder de comfortband zit (of onder de minimale kamertemperatuur). Een tekort van enkele tienden graad liep eerder door tot 70 Hz.
