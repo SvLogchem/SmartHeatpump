@@ -1149,3 +1149,14 @@ def test_shadow_mode_does_not_report_a_frost_switch_on():
     d = c.step(_inp(_t(0), room=20.0, outside=-6.0, ret=6.0, switch_state="off", hvac_on=False, regeling_actief=False))
     assert not d.frost_forced and d.switch is None
 
+
+
+def test_setpoint_restarts_from_the_water_after_coasting_and_follows_the_kick():
+    c = SmartController()
+    kw = dict(outside=4.0, flow=24.0, ret=24.0, freq=0.0, room=19.0, switch_state="on", target_current=21.0)
+    for m in range(20):                                   # coasting: prev setpoint anchor must not survive
+        c.step(_inp(_t(m * 2), **dict(kw, room=22.8)))
+    assert c._prev_s is None
+    d = c.step(_inp(_t(60), **kw))                        # room 1 K too cold, pump idle: kick, not a 0.5 K crawl
+    assert d.setpoint >= 24.0 + 2.0
+

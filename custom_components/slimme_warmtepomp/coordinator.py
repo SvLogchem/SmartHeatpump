@@ -47,6 +47,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self.last_setpoint: float | None = None
         self._forecast: list = []
         self._forecast_at: datetime | None = None
+        self._forecast_warned = False
         self._saved_at: datetime | None = None
         self._saved_defrosts = 0.0
         self._coil_samples: list = []
@@ -193,7 +194,12 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
                 out.append((dt_util.as_local(t), float(temp), it.get("cloud_coverage")))
             self._forecast = sorted(out, key=lambda x: x[0])
         except (HomeAssistantError, KeyError, TypeError, ValueError) as err:
-            _LOGGER.debug("Weather forecast unavailable (%s): %s", entity, err)
+            if not self._forecast_warned:
+                self._forecast_warned = True
+                _LOGGER.warning("Weather forecast unavailable from %s (%s): the planner runs without a forecast until it "
+                                "answers an hourly forecast request", entity, err)
+            else:
+                _LOGGER.debug("Weather forecast unavailable (%s): %s", entity, err)
 
     async def _build_inputs(self) -> Inputs:
         cfg, now = self.cfg, dt_util.now()

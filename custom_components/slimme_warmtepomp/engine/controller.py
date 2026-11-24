@@ -670,7 +670,7 @@ class SmartController:
 
         # ---- heating curve: blend learned model with the manual curve
         conf = self.model.confidence()
-        use_learned = inp.learning_enabled and f_known and self.model.plausible()
+        use_learned = f_known and self.model.plausible()      # "learning off" stops learning, not using
         wl = _clamp((conf - 0.35) / 0.45, 0.0, 1.0) if use_learned else 0.0
         w_off = self.dT_sup if mode == "retour" else 0.0
         s_max = max(s["max_flow_temp"], s["min_setpoint"] + 1.0)
@@ -839,6 +839,7 @@ class SmartController:
 
         # ---- setpoint
         if d.coasting:
+            self._prev_s = None       # the rate limit must restart from the measured water, not the pre-coast setpoint
             # The pump only stops its compressor once the water is ~2 K above its setpoint (seen in
             # real history: stop at +2.0, start at -2.5). A setpoint of "return - 1" therefore kept the
             # compressor running at minimum frequency for up to an hour into the quiet hours.

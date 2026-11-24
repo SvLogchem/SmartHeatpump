@@ -228,3 +228,10 @@ In `vloer_setpoint_tabel` staat per kamerdoel naast `setpoint` (wat naar de pomp
 
 ### Geplande uitloop vervangen door zacht doordraaien bij zeer koude vloer (v2.15.3)
 Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven) en de gemeten vloer meer dan 1,5 K onder het modelniveau zit, dan blijft de pomp zacht doordraaien. Anders zakt de kamer straks door de koude vloer onder het setpoint en moet de pomp hard opladen. Bij prijs-/netlimiet-uitloop of raam open verandert er niets.
+
+### Tweede review (v2.16.0)
+- Na uitlopen start de setpointbegrenzing (max. 0,5 K per ronde) opnieuw vanaf het gemeten water, niet meer vanaf het setpoint van vóór het uitlopen. De pomp start daardoor sneller als de kamer te koud is.
+- "Blijft leren" uit stopt alleen het leren; het geleerde model blijft in gebruik.
+- De grote attributen van sensor Setpoint (±4 KB per ronde) worden niet meer in de recorder-database opgeslagen. Ze blijven live zichtbaar.
+- Nieuw: "Diagnostiek downloaden" op de integratiepagina (instellingen, geleerd model, laatste beslissing).
+- Een weerentiteit die geen uurlijkse voorspelling geeft, levert eenmalig een waarschuwing in het log op.
