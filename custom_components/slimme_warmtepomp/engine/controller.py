@@ -808,14 +808,15 @@ class SmartController:
         # room needs: the pump would then have to recharge it hard (and the room undershoots). While the floor is
         # clearly below its equilibrium the pump keeps running softly (minimum frequency) instead of coasting.
         floor_hold = False
-        if (over and use_learned and f_known and inp.floor is not None and self.f_est is not None
-                and not (self.summer or window_active or grid_block)
+        if ((over or (plan_coast and tr <= sp_now + 0.3)) and use_learned and f_known and inp.floor is not None
+                and self.f_est is not None and not (self.summer or window_active or grid_block)
                 and tr <= sp_now + s["tolerantie_hoog"] + 1.0):
             eq_now = self.model.floor_equilibrium(sp_now, to_now, sun_now) + self.trim_at(to_now)
-            floor_hold = eq_now - self.f_est > 0.5
+            # planned coasting with the room just at its target: only hold when the floor is clearly too cold
+            floor_hold = eq_now - self.f_est > (0.5 if over else 1.5)
         self._floor_hold = floor_hold
-        want_coast = ((self.summer or (over and not floor_hold) or cap_coast or plan_coast or window_active or grid_block)
-                      and not emergency)
+        want_coast = ((self.summer or (over and not floor_hold) or cap_coast or (plan_coast and not floor_hold)
+                       or window_active or grid_block) and not emergency)
         if boost is not None:       # a persistent shortfall beats price and planned coasting (never summer/window/grid)
             want_coast = bool(self.summer or window_active or grid_block)
         want = "coast" if want_coast else "run"
