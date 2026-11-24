@@ -1,6 +1,6 @@
 """Constants for the Slimme Warmtepomp integration."""
 DOMAIN = "slimme_warmtepomp"
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 
 CONF_ROOM = "room_temp_sensor"
 CONF_OUTSIDE = "outside_temp_sensor"
@@ -35,4 +35,5 @@ SERVICE_RESET_MODEL = "reset_model"
 
 UPDATE_INTERVAL_MIN = 2
 FORECAST_REFRESH_MIN = 30
+FORECAST_TYPES = ("hourly", "twice_daily", "daily")
 SAVE_INTERVAL_MIN = 30

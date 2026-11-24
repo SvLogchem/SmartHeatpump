@@ -8,6 +8,9 @@ NUMBER_SPECS: list[tuple] = [
     ("basis_temperatuur", "Slimme WP Basis Temperatuur", 15.0, 35.0, 0.5, "°C", 22.0, "core"),
     ("setpoint_offset", "Slimme WP Setpoint Offset", -10.0, 10.0, 0.5, "°C", 0.0, "core"),
     ("stooklijn", "Slimme WP Stooklijn Helling", 0.1, 1.5, 0.05, "", 0.4, "core"),
+    ("stooklijn_corr_min5", "Slimme WP Stooklijn Correctie Bij -5 °C", -5.0, 5.0, 0.5, "°C", 0.0, "core"),
+    ("stooklijn_corr_5", "Slimme WP Stooklijn Correctie Bij 5 °C", -5.0, 5.0, 0.5, "°C", 0.0, "core"),
+    ("stooklijn_corr_15", "Slimme WP Stooklijn Correctie Bij 15 °C", -5.0, 5.0, 0.5, "°C", 0.0, "core"),
     ("horizon", "Slimme WP Weersverwachting Horizon", 1.0, 12.0, 1.0, "h", 4.0, "core"),
     ("zon_factor", "Slimme WP Zon Compensatie Factor", 0.0, 5.0, 0.1, "", 2.0, "core"),
     # --- beveiliging / compressor ---
@@ -25,6 +28,13 @@ NUMBER_SPECS: list[tuple] = [
     ("max_flow_temp", "Slimme WP Max Aanvoertemperatuur", 25.0, 60.0, 1.0, "°C", 40.0, "core"),
     ("min_kamertemp", "Slimme WP Minimale Kamertemperatuur", 10.0, 20.0, 0.5, "°C", 16.0, "core"),
     ("stookgrens", "Slimme WP Zomermodus Stookgrens", 10.0, 25.0, 0.5, "°C", 18.0, "core"),
+    # --- pomp-profiel: eigenschappen van jouw warmtepomp (standaard geschikt voor een Alsavo/Midea-achtige inverter) ---
+    ("pomp_min_freq", "Slimme WP Pomp Minimale Frequentie (0 = leren)", 0.0, 60.0, 1.0, "Hz", 0.0, "core"),
+    ("pomp_max_freq", "Slimme WP Pomp Maximale Frequentie (0 = leren)", 0.0, 150.0, 1.0, "Hz", 0.0, "core"),
+    ("pomp_start_verschil", "Slimme WP Pomp Startverschil", 1.0, 6.0, 0.1, "°C", 2.8, "core"),
+    ("pomp_stop_verschil", "Slimme WP Pomp Stopverschil", 1.5, 6.0, 0.1, "°C", 3.0, "core"),
+    ("pomp_min_vermogen", "Slimme WP Pomp Minimaal Vermogen Bij Draaien", 20.0, 1000.0, 10.0, "W", 250.0, "core"),
+    ("glycol", "Slimme WP Glycol Percentage", 0.0, 50.0, 5.0, "%", 0.0, "core"),
     # --- comfort & planning ---
     ("setpoint_dag", "Slimme WP Setpoint Dag", 15.0, 25.0, 0.1, "°C", 21.0, "core"),
     ("setpoint_nacht", "Slimme WP Setpoint Nacht", 15.0, 25.0, 0.1, "°C", 20.4, "core"),

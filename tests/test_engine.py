@@ -1160,3 +1160,131 @@ def test_setpoint_restarts_from_the_water_after_coasting_and_follows_the_kick():
     d = c.step(_inp(_t(60), **kw))                        # room 1 K too cold, pump idle: kick, not a 0.5 K crawl
     assert d.setpoint >= 24.0 + 2.0
 
+
+
+# ---------- v2.17: pump profile and complete frequency table ----------
+
+def _learner(points, n=12):
+    from engine.modulation import ModulationLearner
+    m = ModulationLearner()
+    for _ in range(n):
+        for gap, hz, kw in points:
+            m.observe(gap, True, hz, kw)
+    return m
+
+
+def test_frequency_table_stops_at_the_maximum_frequency():
+    # the history case: +5 K already gives 70 Hz, +9 K showed 69 Hz -> nothing above +5 K may remain
+    m = _learner([(2.5, 30.0, 1.5), (3.5, 45.0, 2.5), (5.0, 70.0, 4.0), (9.0, 69.0, 4.2)])
+    rows = m.curve(30, 70)
+    assert rows[-1]["verschil"] == 5.0 and rows[-1]["frequentie"] == 70
+    assert all(r["frequentie"] <= 70 for r in rows)
+    assert not [r for r in rows if r["verschil"] > 5.0]
+    t = m.table(30, 70, full=True)
+    assert t["+5.0"] == 70 and "+6.0" not in t and "+9.0" not in t
+
+
+def test_frequency_table_is_filled_between_min_and_max_hz():
+    m = _learner([(2.5, 30.0, 1.5), (5.0, 70.0, 4.0)])
+    rows = m.curve(30, 70)
+    assert [r["verschil"] for r in rows] == [2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+    assert [r["bron"] for r in rows] == ["gemeten"] + ["interpolatie"] * 4 + ["gemeten"]
+    hz = [r["frequentie"] for r in rows]
+    assert hz == sorted(hz) and hz[0] == 30 and hz[-1] == 70
+
+
+def test_frequency_table_is_clipped_to_the_configured_range():
+    m = _learner([(2.5, 25.0, 1.0), (4.0, 60.0, 3.0), (6.0, 80.0, 5.0)])
+    rows = m.curve(30, 60)                                  # pump limited to 30..60 Hz
+    assert rows[0]["frequentie"] == 30                      # below the minimum -> the minimum
+    assert rows[-1]["frequentie"] == 60 and rows[-1]["verschil"] == 4.0   # 60 Hz reached at +4 K: nothing above
+
+
+def test_frequency_table_extrapolates_until_the_maximum_when_not_yet_seen():
+    m = _learner([(2.5, 30.0, 1.5), (4.0, 50.0, 3.0)])
+    rows = m.curve(0, 70)                                   # max configured, never seen
+    assert rows[-1]["frequentie"] == 70 and rows[-1]["bron"] == "schatting"
+    assert [r["bron"] for r in rows if r["verschil"] <= 4.0] == ["gemeten", "interpolatie", "interpolatie", "gemeten"]
+    assert m.curve(0, 0)[-1]["bron"] == "gemeten"           # unknown maximum: only what was measured
+
+
+def test_frequency_range_is_learned_when_not_configured():
+    m = _learner([(2.5, 30.0, 1.5), (5.0, 70.0, 4.0)])
+    assert m.f_range() == (30, 70)
+    assert m.f_range(35, 0) == (35, 70)
+    assert m.f_range(0, 65) == (30, 65)
+    from engine.modulation import ModulationLearner
+    m2 = ModulationLearner(); m2.from_dict(m.to_dict())
+    assert m2.f_range() == (30, 70) and m2.table() == m.table()
+    m.observe(3.0, True, 400.0, 1.0)                       # sensor glitch is ignored
+    assert m.f_range()[1] == 70
+
+
+def test_old_saved_modulation_state_without_range_still_loads():
+    from engine.modulation import ModulationLearner
+    m = ModulationLearner(); m.from_dict({"6": [20.0, 1.0, 50.0, 3.0]})
+    assert m.table() == {"+3.0": 50} and m.f_range() == (0, 0)
+
+
+def test_diag_publishes_complete_table_and_frequency_range():
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(_t(0), room=21.0))
+    assert d.diag["pomp_max_frequentie"] == 80 and d.diag["pomp_min_frequentie"] == 30
+    assert d.diag["verschil_voor_max_frequentie"] == 5.0
+    assert d.diag["frequentie_tabel"]["+5.0"] == 80
+    assert "+6.0" not in d.diag["frequentie_tabel"]
+    assert set(d.diag["frequentie_tabel_bron"].values()) <= {"gemeten", "interpolatie", "schatting"}
+
+
+def test_pump_profile_start_gap_is_used_for_start_kick():
+    def run(start):
+        c = SmartController()
+        d = c.step(_inp(_t(0), room=20.3, outside=12.0, ret=24.0, flow=24.0, freq=0.0, power_w=0.0,
+                        settings={"pomp_start_verschil": start}))
+        return d.setpoint
+    assert run(4.0) >= run(2.0) + 1.5      # idle compressor, cold room: the setpoint sits one start gap above the water
+
+
+def test_glycol_lowers_the_computed_heat_output():
+    def kw(pct):
+        c = SmartController()
+        d = c.step(_inp(_t(0), room=20.0, ret=28.0, flow=33.0, flow_lh=1000.0, freq=45.0, power_w=1500.0,
+                        settings={"glycol": pct}))
+        return d.thermal_kw
+    assert kw(0) > kw(30) > 0
+    assert kw(30) == pytest.approx(kw(0) * (1 - 0.0032 * 30), rel=0.02)
+
+
+def test_minimum_power_decides_heating_when_there_is_no_frequency():
+    from engine.controller import SmartController as SC
+    inp = _inp(_t(0), power_w=180.0, freq=None)
+    assert not SC._heating(inp, 2.0)                       # default 250 W
+    assert SC._heating(inp, 2.0, 100.0)                    # small pump: 180 W is heating
+
+
+def test_pv_surplus_needs_the_house_not_to_import():
+    def surplus(**kw):
+        c = SmartController()
+        return c.step(_inp(_t(0), pv_w=3000.0, **kw)).pv_surplus
+    assert surplus()                                  # no grid sensor: production above the threshold counts
+    assert surplus(grid_import_w=-800.0)              # exporting: clear surplus
+    assert surplus(grid_import_w=60.0)                # within the tolerance
+    assert not surplus(grid_import_w=900.0)           # the house itself uses it all and imports more
+    c = SmartController()
+    assert not c.step(_inp(_t(0), pv_w=300.0, grid_import_w=-800.0)).pv_surplus     # panels below the threshold
+
+
+def test_manual_curve_corrections_are_interpolated_and_shift_the_setpoint():
+    c = SmartController()
+    c.step(_inp(_t(0), settings={"stooklijn_corr_min5": 2.0, "stooklijn_corr_5": 0.0, "stooklijn_corr_15": -1.0}))
+    assert c.curve_corr(-5.0) == pytest.approx(2.0) and c.curve_corr(-10.0) == pytest.approx(2.0)     # flat outside the anchors
+    assert c.curve_corr(0.0) == pytest.approx(1.0) and c.curve_corr(5.0) == pytest.approx(0.0)
+    assert c.curve_corr(10.0) == pytest.approx(-0.5) and c.curve_corr(20.0) == pytest.approx(-1.0)
+
+    def raw(corr):
+        c = SmartController()
+        return c.step(_inp(_t(0), room=20.4, outside=5.0, ret=24.0, flow=27.0, freq=40.0,
+                           settings={"stooklijn_corr_5": corr})).setpoint_raw
+    assert raw(3.0) == pytest.approx(raw(0.0) + 3.0, abs=0.6)
+    c = SmartController(); d = c.step(_inp(_t(0)))
+    assert d.diag["stooklijn_handmatig"] == 0.0

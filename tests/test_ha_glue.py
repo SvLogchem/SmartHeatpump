@@ -322,3 +322,41 @@ def test_relearn_button_uses_percentage_setting(setup):
     run(by_uid["abc123_herleer_percentage"].async_set_native_value(50.0))
     run(by_uid["abc123_opnieuw_aanleren"].async_press())
     assert abs(c.controller.pi_i - 1.0) < 1e-6 and abs(c.controller.trim[2] - 0.5) < 1e-6
+
+
+def test_forecast_falls_back_to_daily_when_hourly_is_not_supported(setup):
+    from homeassistant.exceptions import HomeAssistantError
+    h, entry, c = setup
+    types_asked = []
+
+    async def fake_call(domain, service, data, blocking=False, return_response=False):
+        if domain == "weather":
+            types_asked.append(data["type"])
+            if data["type"] != "daily":
+                raise HomeAssistantError("not supported")
+            day = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+            return {data["entity_id"]: {"forecast": [
+                {"datetime": (day + timedelta(days=i)).isoformat(), "temperature": 8.0, "templow": 2.0} for i in range(1, 5)]}}
+    h.services.async_call = fake_call
+    c._forecast_at, c._forecast_type = None, None
+    run(c._refresh_forecast(datetime.now().astimezone()))
+    assert types_asked == ["hourly", "twice_daily", "daily"]
+    assert len(c._forecast) == 4 and all(abs(f[1] - 5.0) < 1e-9 for f in c._forecast)       # mean of high and low
+    assert c._forecast_type == "daily"
+    # the working type is remembered: the next refresh asks for it directly
+    types_asked.clear(); c._forecast_at = None
+    run(c._refresh_forecast(datetime.now().astimezone()))
+    assert types_asked == ["daily"]
+
+
+def test_decision_changes_are_logged_at_debug_level(setup, caplog):
+    import logging
+    h, entry, c = setup
+    c._last_logged = None
+    with caplog.at_level(logging.DEBUG):
+        run(c._async_update_data())
+    assert any("Decision: reason=" in r.getMessage() for r in caplog.records)
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        run(c._async_update_data())             # unchanged decision: no new line
+    assert not any("Decision: reason=" in r.getMessage() for r in caplog.records)

@@ -16,7 +16,7 @@ from .const import (
     CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_UNIT_OUTSIDE, CONF_COIL, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
     CONF_FLOW, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FREQ, CONF_OUTSIDE, CONF_POWER, CONF_PRICE,
     CONF_PV, CONF_RETURN, CONF_ROOM, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
-    DOMAIN, FORECAST_REFRESH_MIN, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN,
+    DOMAIN, FORECAST_REFRESH_MIN, FORECAST_TYPES, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN,
 )
 from .engine.controller import Decision, Inputs, PROGRAM_DAY, SmartController
 from .engine.prices import parse_price_forecast
@@ -48,6 +48,8 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self._forecast: list = []
         self._forecast_at: datetime | None = None
         self._forecast_warned = False
+        self._forecast_type: str | None = None
+        self._last_logged: tuple | None = None
         self._saved_at: datetime | None = None
         self._saved_defrosts = 0.0
         self._coil_samples: list = []
@@ -179,27 +181,49 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         if self._forecast_at and now - self._forecast_at < timedelta(minutes=FORECAST_REFRESH_MIN):
             return
         self._forecast_at = now  # also on failure, to avoid hammering the service
-        try:
-            resp = await self.hass.services.async_call(
-                "weather", "get_forecasts", {"entity_id": entity, "type": "hourly"},
-                blocking=True, return_response=True,
-            )
-            items = (resp or {}).get(entity, {}).get("forecast", [])
-            out = []
-            for it in items:
-                t = dt_util.parse_datetime(str(it.get("datetime")))
-                temp = it.get("temperature")
-                if t is None or temp is None:
-                    continue
-                out.append((dt_util.as_local(t), float(temp), it.get("cloud_coverage")))
-            self._forecast = sorted(out, key=lambda x: x[0])
-        except (HomeAssistantError, KeyError, TypeError, ValueError) as err:
-            if not self._forecast_warned:
-                self._forecast_warned = True
-                _LOGGER.warning("Weather forecast unavailable from %s (%s): the planner runs without a forecast until it "
-                                "answers an hourly forecast request", entity, err)
-            else:
-                _LOGGER.debug("Weather forecast unavailable (%s): %s", entity, err)
+        last_err: Exception | None = None
+        # not every weather integration serves hourly data: fall back to twice-daily and daily forecasts
+        # (coarser, but the planner interpolates) and remember which type works
+        types = [self._forecast_type] if self._forecast_type else list(FORECAST_TYPES)
+        for ftype in types:
+            try:
+                resp = await self.hass.services.async_call(
+                    "weather", "get_forecasts", {"entity_id": entity, "type": ftype},
+                    blocking=True, return_response=True,
+                )
+                out = self._parse_forecast((resp or {}).get(entity, {}).get("forecast", []), ftype)
+            except (HomeAssistantError, KeyError, TypeError, ValueError) as err:
+                last_err = err
+                continue
+            if out:
+                if self._forecast_type != ftype:
+                    _LOGGER.debug("Weather forecast for %s: using the '%s' forecast", entity, ftype)
+                self._forecast_type, self._forecast, self._forecast_warned = ftype, out, False
+                return
+        self._forecast_type = None      # try all types again next time
+        if not self._forecast_warned:
+            self._forecast_warned = True
+            _LOGGER.warning("Weather forecast unavailable from %s (%s): the planner runs without a forecast until it "
+                            "answers a forecast request (hourly, twice daily or daily)", entity, last_err or "empty answer")
+        else:
+            _LOGGER.debug("Weather forecast unavailable (%s): %s", entity, last_err or "empty answer")
+
+    @staticmethod
+    def _parse_forecast(items, ftype: str) -> list:
+        out = []
+        for it in items or []:
+            t = dt_util.parse_datetime(str(it.get("datetime")))
+            temp = it.get("temperature")
+            if t is None or temp is None:
+                continue
+            t, temp = dt_util.as_local(t), float(temp)
+            if ftype == "daily":
+                low = it.get("templow")
+                if low is not None:
+                    temp = (temp + float(low)) / 2.0          # daily mean, placed at the middle of the day
+                t = t.replace(hour=12, minute=0, second=0, microsecond=0)
+            out.append((t, temp, it.get("cloud_coverage")))
+        return sorted(out, key=lambda x: x[0])
 
     async def _build_inputs(self) -> Inputs:
         cfg, now = self.cfg, dt_util.now()
@@ -353,12 +377,24 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
                         "ontdooitijd) en kijk of de verdamper vrij is van ijs."),
             "notification_id": "slimme_warmtepomp_ijsvorming"}, blocking=False)
 
+    def _log_changes(self, d: Decision) -> None:
+        """One debug line whenever the decision changes in a way that matters (enable with logger: debug)."""
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return
+        key = (d.reason, d.switch, d.setpoint, d.coasting, d.boost)
+        if key != self._last_logged:
+            self._last_logged = key
+            _LOGGER.debug("Decision: reason=%s setpoint=%s (raw %s) switch=%s coasting=%s limited=%s heating=%s boost=%s room target=%s",
+                          d.reason, d.setpoint, d.setpoint_raw, d.switch, d.coasting, d.freq_limited, d.heating, d.boost,
+                          d.room_setpoint)
+
     async def _async_update_data(self) -> Decision:
         try:
             inp = await self._build_inputs()
             async with self._lock:
                 decision = await self.hass.async_add_executor_job(self.controller.step, inp)
             await self._execute(decision)
+            self._log_changes(decision)
             now = dt_util.utcnow()
             await self._notify_icing(decision, now)
             await self._notify_frost(decision, now)
