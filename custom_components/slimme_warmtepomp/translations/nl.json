@@ -1,6 +1,6 @@
 {
+  "title": "Slimme Warmtepomp",
   "config": {
-    "title": "Slimme Warmtepomp",
     "step": {
       "user": {
         "title": "Stap 1 van 5 – Installatie",
@@ -180,8 +180,8 @@
     },
     "setpoint_step": {
       "options": {
-        "0.5": "0,5 °C",
-        "1.0": "1 °C"
+        "0_5": "0,5 °C",
+        "1_0": "1 °C"
       }
     },
     "pump_profile": {
@@ -239,13 +239,6 @@
               "idle": "Stand-by",
               "off": "Uit",
               "defrosting": "Ontdooien"
-            }
-          },
-          "preset_mode": {
-            "state": {
-              "Dag": "Dagprogramma",
-              "Nacht": "Nachtprogramma",
-              "Handmatig": "Handmatig"
             }
           }
         }

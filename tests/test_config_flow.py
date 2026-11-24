@@ -81,7 +81,7 @@ def test_wizard_walks_through_the_steps_and_only_asks_for_ticked_extras():
     r = G.run(flow.async_step_user())
     assert r["step_id"] == "user" and "pump_source" in keys(r) and "pump_profile" in keys(r)
     assert "localtuya" in ER.REGISTRY.entities["number.warmtepomp_setpoint"].platform
-    r = G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "0.5", "pump_profile": "algemeen",
+    r = G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "0_5", "pump_profile": "algemeen",
                                     "pump_source": "localtuya", "pump_source_filter": True}))
     assert r["step_id"] == "basis"
     assert {"room_temp_sensor", "extra_room_sensors", "room_mode", "outside_temp_sensor"} <= set(keys(r))
@@ -110,7 +110,7 @@ def test_wizard_walks_through_the_steps_and_only_asks_for_ticked_extras():
 
 def test_wizard_without_extras_finishes_right_after_the_extras_screen():
     flow, _ = make_flow(STATES)
-    G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "1.0", "pump_profile": "alsavo", "pump_source_filter": True}))
+    G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "1_0", "pump_profile": "alsavo", "pump_source_filter": True}))
     G.run(flow.async_step_basis({"room_temp_sensor": "sensor.r", "room_mode": "hoofd", "outside_temp_sensor": "sensor.o"}))
     G.run(flow.async_step_pomp({})); G.run(flow.async_step_aansturing({}))
     r = G.run(flow.async_step_extras({}))
@@ -119,7 +119,7 @@ def test_wizard_without_extras_finishes_right_after_the_extras_screen():
 
 def test_wizard_prefills_suggestions_from_unit_and_name():
     flow, _ = make_flow(STATES)
-    G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "1.0", "pump_profile": "alsavo", "pump_source": "localtuya", "pump_source_filter": True}))
+    G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "1_0", "pump_profile": "alsavo", "pump_source": "localtuya", "pump_source_filter": True}))
     basis = keys(G.run(flow.async_step_basis()))
     assert basis["room_temp_sensor"].kw.get("default") == "sensor.woonkamer_temperatuur"
     assert basis["outside_temp_sensor"].kw.get("default") == "sensor.tuin_buitentemperatuur"
@@ -136,7 +136,7 @@ def test_wizard_prefills_suggestions_from_unit_and_name():
 def test_meldingen_screen_is_skipped_when_there_is_no_notify_service():
     flow, h = make_flow(STATES)
     h.services.async_services = lambda: {"notify": {"persistent_notification": object()}}
-    G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "1.0", "pump_profile": "alsavo", "pump_source_filter": True}))
+    G.run(flow.async_step_user({"control_mode": "retour", "setpoint_step": "1_0", "pump_profile": "alsavo", "pump_source_filter": True}))
     G.run(flow.async_step_basis({"room_temp_sensor": "sensor.r", "room_mode": "hoofd", "outside_temp_sensor": "sensor.o"}))
     G.run(flow.async_step_pomp({})); G.run(flow.async_step_aansturing({}))
     assert G.run(flow.async_step_extras({"extra_meldingen": True}))["type"] == "create_entry"
@@ -148,8 +148,8 @@ def test_reconfigure_starts_from_current_values_and_removes_unticked_parts():
                                         "flow_rate_sensors": ["sensor.f1", "sensor.f2"]}, options={})
     flow, _ = make_flow(STATES, entry)
     r = G.run(flow.async_step_reconfigure())
-    assert r["step_id"] == "user" and keys(r)["control_mode"].kw["default"] == "retour" and keys(r)["setpoint_step"].kw["default"] == "1.0"
-    G.run(flow.async_step_user({"control_mode": "aanvoer", "setpoint_step": "1.0", "pump_profile": "alsavo", "pump_source_filter": True}))
+    assert r["step_id"] == "user" and keys(r)["control_mode"].kw["default"] == "retour" and keys(r)["setpoint_step"].kw["default"] == "1_0"
+    G.run(flow.async_step_user({"control_mode": "aanvoer", "setpoint_step": "1_0", "pump_profile": "alsavo", "pump_source_filter": True}))
     basis = keys(G.run(flow.async_step_basis()))
     assert basis["room_temp_sensor"].kw["default"] == "sensor.r"
     G.run(flow.async_step_basis({"room_temp_sensor": "sensor.r", "room_mode": "hoofd", "outside_temp_sensor": "sensor.o"}))
@@ -217,7 +217,7 @@ def test_every_wizard_field_has_a_label_and_every_label_belongs_to_a_field(lang)
 def test_selector_options_and_repair_issues_are_translated(lang):
     tr = json.loads((TR / f"{lang}.json").read_text())
     mod = importlib.import_module(G.PKG + ".config_flow")
-    for key, options in {"control_mode": ["retour", "aanvoer"], "setpoint_step": ["0.5", "1.0"],
+    for key, options in {"control_mode": ["retour", "aanvoer"], "setpoint_step": ["0_5", "1_0"],
                          "pump_profile": list(mod.PROFILES), "room_mode": list(mod.ROOM_MODES)}.items():
         assert set(tr["selector"][key]["options"]) == set(options), key
     from pathlib import Path as _P
@@ -226,3 +226,23 @@ def test_selector_options_and_repair_issues_are_translated(lang):
         assert f'"{kind}"' in src and kind in tr["issues"], kind
         assert tr["issues"][kind]["title"] and tr["issues"][kind]["description"]
     assert {"reset_model", "exporteer", "importeer"} <= set(tr["services"])
+
+
+VALID_KEY = __import__("re").compile(r"^[a-z0-9_-]+$")
+NOT_A_KEY = {"description", "name", "title", "message"}
+
+
+def _translation_keys(node, path=""):
+    """Keys that Home Assistant looks values up by (hassfest rejects anything outside [a-z0-9-_])."""
+    for k, v in node.items():
+        if isinstance(v, dict):
+            yield from _translation_keys(v, f"{path}.{k}")
+        yield f"{path}.{k}", k
+
+
+@pytest.mark.parametrize("lang", ["nl", "en"])
+def test_translation_keys_are_valid_for_hassfest(lang):
+    tr = json.loads((TR / f"{lang}.json").read_text())
+    for path, key in _translation_keys({"selector": tr["selector"], "entity": tr["entity"], "issues": tr["issues"]}):
+        assert VALID_KEY.match(key), (path, key)
+    assert "title" in tr and "title" not in tr["config"]            # hassfest: the title lives at the root

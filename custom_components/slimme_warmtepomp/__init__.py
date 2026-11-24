@@ -11,6 +11,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_COIL, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FLOW_RATES, DOMAIN, SERVICE_RESET_MODEL, VERSION
@@ -19,6 +20,7 @@ from .engine.settings import REMOVED_NUMBER_KEYS
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor", "number", "binary_sensor", "climate", "switch", "button"]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type SlimmeConfigEntry = ConfigEntry[SmartHeatpumpCoordinator]
 

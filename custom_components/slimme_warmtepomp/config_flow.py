@@ -68,9 +68,14 @@ def _entity(domain: list[str], *, multiple: bool = False, integration: str | Non
     return selector.EntitySelector(selector.EntitySelectorConfig(**cfg))
 
 
+def _step_key(value: Any) -> str:
+    """0.5 -> "0_5": option values double as translation keys, which may not contain a dot."""
+    return f"{float(str(value).replace('_', '.')):.1f}".replace(".", "_")
+
+
 def _clean(data: dict[str, Any]) -> dict[str, Any]:
     out = {k: v for k, v in data.items() if v not in (None, "", []) and k not in EXTRAS}
-    out[CONF_STEP] = float(out.get(CONF_STEP, 1.0))
+    out[CONF_STEP] = float(str(out.get(CONF_STEP, 1.0)).replace("_", "."))
     return out
 
 
@@ -147,7 +152,7 @@ class SlimmeWarmtepompConfigFlow(ConfigFlow, domain=DOMAIN):
         platforms = self._platforms()
         fields: dict = {
             vol.Required(CONF_CONTROL_MODE, default=self._data.get(CONF_CONTROL_MODE, "retour")): _select(CONF_CONTROL_MODE, ["retour", "aanvoer"]),
-            vol.Required(CONF_STEP, default=str(self._data.get(CONF_STEP, "1.0"))): _select(CONF_STEP, ["0.5", "1.0"]),
+            vol.Required(CONF_STEP, default=_step_key(self._data.get(CONF_STEP, 1.0))): _select(CONF_STEP, ["0_5", "1_0"]),
             vol.Required(CONF_PUMP_PROFILE, default=self._data.get(CONF_PUMP_PROFILE, "alsavo")): _select(CONF_PUMP_PROFILE, list(PROFILES)),
         }
         if platforms:
@@ -160,7 +165,7 @@ class SlimmeWarmtepompConfigFlow(ConfigFlow, domain=DOMAIN):
         self._reconfigure = True
         entry = self._get_reconfigure_entry()
         self._data = {**entry.data, **entry.options}
-        self._data[CONF_STEP] = str(self._data.get(CONF_STEP, "1.0"))
+        self._data[CONF_STEP] = _step_key(self._data.get(CONF_STEP, 1.0))
         return await self.async_step_user(user_input)
 
     # ------------------------------------------------------------------ 2. basics

@@ -1,6 +1,6 @@
 {
+  "title": "Smart Heat Pump",
   "config": {
-    "title": "Smart Heat Pump",
     "step": {
       "user": {
         "title": "Step 1 of 5 – Installation",
@@ -180,8 +180,8 @@
     },
     "setpoint_step": {
       "options": {
-        "0.5": "0.5 °C",
-        "1.0": "1 °C"
+        "0_5": "0.5 °C",
+        "1_0": "1 °C"
       }
     },
     "pump_profile": {
@@ -239,13 +239,6 @@
               "idle": "Standby",
               "off": "Off",
               "defrosting": "Defrosting"
-            }
-          },
-          "preset_mode": {
-            "state": {
-              "Dag": "Day program",
-              "Nacht": "Night program",
-              "Handmatig": "Manual"
             }
           }
         }

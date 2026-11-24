@@ -144,9 +144,11 @@ def install():
         async_create_issue=lambda hass, domain, issue_id, **kw: issues.created.__setitem__(issue_id, kw),
         async_delete_issue=lambda hass, domain, issue_id: issues.deleted.append(issue_id),
         IssueSeverity=StrEnum("IssueSeverity", {"WARNING": "warning", "ERROR": "error"}), ISSUES=issues)
+    mod("homeassistant.helpers.config_validation", config_entry_only_config_schema=lambda domain: {"domain": domain})
     mod("homeassistant.helpers.selector", SelectSelectorMode=StrEnum("SSM", {"DROPDOWN": "dropdown"}))
     ha.helpers.entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
     ha.helpers.selector = sys.modules["homeassistant.helpers.selector"]
+    ha.helpers.config_validation = sys.modules["homeassistant.helpers.config_validation"]
     consts = dict(
         ATTR_TEMPERATURE="temperature", PERCENTAGE="%", EVENT_HOMEASSISTANT_STOP="homeassistant_stop", EVENT_STATE_CHANGED="state_changed", MATCH_ALL="*",
         EntityCategory=StrEnum("EntityCategory", {"CONFIG": "config", "DIAGNOSTIC": "diagnostic"}),
