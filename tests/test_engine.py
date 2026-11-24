@@ -1047,7 +1047,8 @@ def test_floor_table_is_published_per_outdoor_temperature():
     c = SmartController(); _fill(c)
     d = c.step(_inp(_t(0), room=21.0))
     t = d.diag.get("vloer_setpoint_tabel")
-    assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"])
+    assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"]
+                         and len(t["0"]["kamer"]) == 3)
 
 
 def test_warm_floor_keeps_the_frequency_limit_even_when_room_is_far_below_band():
@@ -1067,3 +1068,22 @@ def test_coil_tracker_detects_a_defrost_with_the_two_minute_sampling_of_the_inte
     for v in (24.0, 38.0, 12.0, 2.0, -3.0, -4.0):       # the defrost rises ~30 K between two samples
         tr.update(t, v, True); t += timedelta(minutes=2)
     assert tr.last_peak == pytest.approx(38.0)
+
+def test_cold_floor_keeps_pump_running_softly_while_room_is_warm_from_the_slab():
+    base = dict(outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4}, room=21.0)
+    cold = SmartController()                         # room 21.0 (over), but the floor already cooled far below need
+    for m in range(40):
+        d = cold.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=19.0, **base))
+    assert cold._floor_hold and not d.coasting
+    warm = SmartController()                         # floor still warm: coasting as before
+    for m in range(40):
+        d = warm.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=30.0, **base))
+    assert not warm._floor_hold and d.coasting
+
+
+def test_expected_setpoint_table_covers_the_coming_hours():
+    c = SmartController()
+    for m in range(5):
+        d = c.step(_inp(_t(m), room=20.5, floor=22.0, ret=24.0, freq=0.0))
+    f = d.diag.get("verwacht_setpoint")
+    assert f is None or (len(f) == 7 and all(r["setpoint"] >= DEFAULTS["min_setpoint"] for r in f))

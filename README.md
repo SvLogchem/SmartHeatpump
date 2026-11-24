@@ -200,3 +200,12 @@ Is de gemeten vloer (bijna) op het niveau dat het model nodig heeft (tekort ≤ 
 
 ### Ontdooipiek werkt weer (v2.14.1)
 De regeling meet elke 2 minuten, maar de coil-detectie zocht een stijging van 6 K binnen 100 s en zag daardoor nooit twee samples met een ontdooi ertussen. Sensor Ontdooipiek bleef leeg. Het zoekvenster is nu 150 s.
+
+### Vloer niet te ver laten afkoelen (v2.13.3)
+Is de kamer te warm omdat de vloer nog warmte afgeeft, dan liep de pomp eerder helemaal uit ("te warm"). De vloer koelde dan ver onder wat de kamer nodig heeft, en daarna moest hij hard opladen terwijl de kamer onder het setpoint zakte. Nu blijft de pomp zacht (minimale frequentie) doordraaien zolang de gemeten vloer meer dan 0,5 K onder het modelniveau zit en de kamer niet meer dan 1 K boven de bovengrens ligt. Zichtbaar als attribuut `vloer_aanhouden`.
+
+### Tabel buiten / kamer / vloer / setpoint (v2.13.4)
+Het attribuut `vloer_setpoint_tabel` toont per buitentemperatuur drie kamerdoelen (dagsetpoint −0,4 / ±0 / +0,6 K): de vloertemperatuur die de kamer daarop houdt en het bijbehorende setpoint naar de warmtepomp.
+
+### Verwacht setpoint komende uren (v2.14.0)
+Attribuut `verwacht_setpoint` (sensor Setpoint): voor nu en elke 2 uur tot 12 uur vooruit het kamerdoel, de benodigde vloertemperatuur en het basissetpoint, berekend met de weersvoorspelling en de zon en inclusief de geleerde stooklijn-correctie. Voorverwarmen en uitlopen van de planner komen daar nog bovenop.
