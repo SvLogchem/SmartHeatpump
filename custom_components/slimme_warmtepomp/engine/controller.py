@@ -645,7 +645,7 @@ class SmartController:
             # retour mode: the setpoint *is* the floor/return temperature; aanvoer: supply water
             eq = (self.model.floor_equilibrium(sp, to, sun) if mode == "retour"
                   else self.model.water_equilibrium(sp, to, sun))
-            lrn = _clamp(eq, man - 6.0, man + 6.0)
+            lrn = _clamp(eq, man - 12.0, man + 6.0)   # a too steep manual curve may not pin the learned setpoint high
             return _clamp(wl * lrn + (1.0 - wl) * man + self.trim_at(to), s["min_setpoint"], s_max)
 
         # ---- weather forecast helpers
@@ -679,6 +679,11 @@ class SmartController:
             if not inp.modulation_enabled:
                 return None
             fmax = s["max_freq_stil"] if quiet_fn(t) else s["max_freq_dag"]
+            # Normal running stays at the efficient boost frequency: a setpoint far above what the pump can reach
+            # (history: 38-40 C at 0 C outside, 70 Hz for hours, never back to 30 Hz) only wastes energy. Only a
+            # room that is already below its comfort band may use the full frequency range.
+            if fmax > 0 and s["boost_freq"] > 0 and tr >= sp_now - s["tolerantie_laag"]:
+                fmax = min(fmax, s["boost_freq"])
             return self.mod.gap_cap(fmax) if fmax > 0 else None
 
         # ---- plan
@@ -791,7 +796,9 @@ class SmartController:
             cap = gap_cap_fn(now)
             if cap is not None and not soft and inp.ret is not None and not emergency:
                 base_now = s_base(now, to_now, sun_fn(now), sp_now)     # the integrator may not bypass the Hz limit
-                limited = max(base_now, inp.ret + cap)
+                # the house base level may exceed the frequency limit by 2 K at most: a base the pump cannot reach
+                # (history: 38 C at 0 C outside) must not keep it at 70 Hz while "frequentie begrensd" is on
+                limited = max(min(base_now, inp.ret + cap + 2.0), inp.ret + cap)
                 if raw > limited:
                     raw, d.freq_limited = limited, True
             # Minimum heating setpoint (user setting): while the room is below target the water is brought up to

@@ -181,3 +181,8 @@ De planner mag alleen uitlopen (compressor uit) zolang de kamer binnen de comfor
 
 ### Boost stopt als de vloer vol is (v2.12.2)
 Tijdens "tekort aanhouden" stopt de pomp met extra warmte zodra de gemeten vloer minstens 0,5 K warmer is dan het model nodig vindt en de kamer reageert. Voorheen bleef hij aanhouden tot de kamer op setpoint was, waardoor de vloer te veel warmte kreeg en de kamer tot 21,6 °C opliep.
+
+### Haalbaar setpoint en frequentiebegrenzing (v2.12.3)
+- Het geleerde setpoint mag niet meer door een te steile handmatige stooklijn worden vastgepind: ondergrens is nu stooklijn − 12 K (was − 6 K).
+- De frequentiebegrenzing mag het huis-basisniveau maximaal 2 K boven "retour + toegestaan verschil" laten uitkomen. Een onhaalbaar setpoint (38 °C bij 0 °C buiten) hield de pomp daardoor op 70 Hz terwijl "frequentie begrensd" aan stond.
+- Overdag begrenst de regeling op de efficiënte boost-frequentie (50 Hz) zolang de kamer binnen de comfortband zit; eronder mag het volledige bereik (max frequentie dag).
