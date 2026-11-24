@@ -3,131 +3,165 @@
     "title": "Slimme Warmtepomp",
     "step": {
       "user": {
-        "title": "Configuratie Slimme Warmtepomp",
-        "description": "Koppel de sensoren en de aansturing van je warmtepomp. Alleen kamer- en buitentemperatuur zijn verplicht; hoe meer sensoren, hoe slimmer de regeling.",
+        "title": "Stap 1 van 5 – Installatie",
+        "description": "Kies hoe je warmtepomp wordt aangestuurd en welk type pomp je hebt. In de volgende stappen koppel je de sensoren; alles wat je hier kiest, kun je later via 'Opnieuw configureren' aanpassen.",
         "data": {
-          "room_temp_sensor": "Kamertemperatuur (sensor)",
-          "outside_temp_sensor": "Buitentemperatuur (sensor)",
-          "target_setpoint_entity": "Doeltemperatuur warmtepomp (number)",
-          "heatpump_switch": "Warmtepomp aan/uit (switch)",
           "control_mode": "Sturen op",
           "setpoint_step": "Stapgrootte doeltemperatuur",
-          "return_temp_sensor": "Retourtemperatuur (sensor)",
-          "flow_temp_sensor": "Aanvoertemperatuur (sensor)",
-          "floor_temp_sensor": "Vloer-/dekvloertemperatuur (sensor)",
-          "compressor_freq_sensor": "Compressorfrequentie (sensor)",
-          "power_sensor": "Elektrisch vermogen (sensor)",
-          "voltage_sensor": "Spanning (sensor)",
-          "current_sensor": "Stroomsterkte (sensor)",
-          "flow_rate_sensor_1": "Doorstroming 1 (sensor)",
-          "flow_rate_sensor_2": "Doorstroming 2 (sensor)",
-          "weather_entity": "Weersverwachting (weather)",
-          "electricity_price_sensor": "Stroomprijs (sensor)",
-          "pv_power_sensor": "Zonnepaneelvermogen (sensor)",
-          "dhw_temp_sensor": "Tapwatervat temperatuur (sensor)",
-          "dhw_switch": "Tapwater aanvragen (switch)",
-          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)",
-          "open_sensors": "Ramen en deuren (sensoren)",
-          "presence_entities": "Aanwezigheid (personen/trackers)",
-          "holiday_entity": "Vakantiemodus (schakelaar)",
-          "return_time_entity": "Verwachte terugkomst (datum/tijd)",
-          "grid_power_sensor": "Netimport (sensor, W)",
-          "unit_outside_sensor": "Buitentemperatuur van de warmtepomp zelf (alleen informatie, optioneel)",
-          "coil_sensor": "Coil-/verdampertemperatuur van de pomp (pg_temp, optioneel)"
+          "pump_profile": "Type warmtepomp",
+          "pump_source": "Integratie van de warmtepomp",
+          "pump_source_filter": "Alleen entiteiten van die integratie tonen bij de pompgegevens"
         },
         "data_description": {
-          "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
-          "outside_temp_sensor": "Liefst een sensor die niet in de zon hangt.",
-          "target_setpoint_entity": "De entiteit waarmee de gewenste watertemperatuur van de warmtepomp wordt ingesteld (bijv. Tuya Local). Leeg = alleen meten en leren, niets aansturen.",
-          "heatpump_switch": "Optioneel. Wordt alleen gebruikt in de zomer of bij flinke oververhitting.",
           "control_mode": "Op welke watertemperatuur het doel van je warmtepomp betrekking heeft.",
           "setpoint_step": "Resolutie van de warmtepomp (veel Tuya-pompen: 1 °C). De regeling middelt automatisch over de tijd.",
-          "return_temp_sensor": "Nodig voor het leren van het vloermodel (of gebruik een vloersensor).",
-          "flow_temp_sensor": "Nodig voor het leren van het opwarmgedrag van de vloer.",
-          "floor_temp_sensor": "Optioneel, maakt het model nauwkeuriger. Zonder deze sensor wordt de retourtemperatuur gebruikt.",
-          "compressor_freq_sensor": "Hiermee weet de regeling wanneer de pomp echt verwarmt.",
-          "power_sensor": "In W of kW.",
-          "voltage_sensor": "Alleen als er geen vermogenssensor is.",
-          "current_sensor": "Alleen als er geen vermogenssensor is.",
-          "flow_rate_sensor_1": "Voor berekening van thermisch vermogen en COP.",
-          "flow_rate_sensor_2": "Alleen bij parallelle circuits die opgeteld moeten worden.",
-          "weather_entity": "Voor voorspelling van buitentemperatuur en zon.",
-          "electricity_price_sensor": "Optioneel. Een voorspelling in de attributen (Nordpool, EPEX, Frank Energie, ENTSO-E) wordt automatisch herkend.",
-          "pv_power_sensor": "Optioneel. Bij overschot wordt goedkoper/gratis warmte in de vloer opgeslagen.",
-          "dhw_temp_sensor": "Optioneel. Alleen invullen als de warmtepomp ook warm tapwater maakt; zet de tapwaterfunctie aan.",
-          "dhw_switch": "Schakelaar die een tapwatercyclus start/stopt.",
-          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet.",
-          "open_sensors": "Optioneel. Staat er langer dan de ingestelde tijd iets open, dan pauzeert het stoken (met vorstbeveiliging) en wordt er niet van geleerd.",
-          "presence_entities": "Optioneel. Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
-          "holiday_entity": "Optioneel. Staat deze aan, dan geldt altijd het afwezig-setpoint.",
-          "return_time_entity": "Optioneel, bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd.",
-          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming).",
-          "unit_outside_sensor": "Optioneel. De buitensensor op het rooster van de pomp (kan bevriezen) wordt NIET gebruikt voor de regeling, alleen om ontdooien te leren en te tonen.",
-          "coil_sensor": "Optioneel. Maakt snellere ontdooi-detectie mogelijk en meet of een ontdooi het ijs echt wegsmelt (coil moet 25-45 °C halen). Twee zwakke ontdooicycli achter elkaar geven een ijsmelding."
+          "pump_profile": "Alsavo/Tuya heeft vaste startwaarden uit de praktijk; 'Algemeen' start voorzichtiger en leert daarna zelf bij.",
+          "pump_source": "Bijvoorbeeld localtuya. Wordt gebruikt om de juiste pompsensoren voor te stellen en de lijsten kleiner te maken.",
+          "pump_source_filter": "Uit = je ziet alle entiteiten (handig als sensoren uit verschillende integraties komen)."
         }
       },
-      "reconfigure": {
-        "title": "Entiteiten aanpassen",
-        "description": "Koppel de sensoren en de aansturing van je warmtepomp. Alleen kamer- en buitentemperatuur zijn verplicht; hoe meer sensoren, hoe slimmer de regeling.",
+      "basis": {
+        "title": "Stap 2 van 5 – Ruimte en buiten",
+        "description": "Kamer- en buitentemperatuur zijn verplicht. De velden zijn vooraf ingevuld als er een goede kandidaat gevonden is; controleer ze even.",
         "data": {
-          "room_temp_sensor": "Kamertemperatuur (sensor)",
-          "outside_temp_sensor": "Buitentemperatuur (sensor)",
-          "target_setpoint_entity": "Doeltemperatuur warmtepomp (number)",
-          "heatpump_switch": "Warmtepomp aan/uit (switch)",
-          "control_mode": "Sturen op",
-          "setpoint_step": "Stapgrootte doeltemperatuur",
-          "return_temp_sensor": "Retourtemperatuur (sensor)",
-          "flow_temp_sensor": "Aanvoertemperatuur (sensor)",
-          "floor_temp_sensor": "Vloer-/dekvloertemperatuur (sensor)",
-          "compressor_freq_sensor": "Compressorfrequentie (sensor)",
-          "power_sensor": "Elektrisch vermogen (sensor)",
-          "voltage_sensor": "Spanning (sensor)",
-          "current_sensor": "Stroomsterkte (sensor)",
-          "flow_rate_sensor_1": "Doorstroming 1 (sensor)",
-          "flow_rate_sensor_2": "Doorstroming 2 (sensor)",
-          "weather_entity": "Weersverwachting (weather)",
-          "electricity_price_sensor": "Stroomprijs (sensor)",
-          "pv_power_sensor": "Zonnepaneelvermogen (sensor)",
-          "dhw_temp_sensor": "Tapwatervat temperatuur (sensor)",
-          "dhw_switch": "Tapwater aanvragen (switch)",
-          "dhw_setpoint_entity": "Doeltemperatuur tapwater (number)",
-          "open_sensors": "Ramen en deuren (sensoren)",
-          "presence_entities": "Aanwezigheid (personen/trackers)",
-          "holiday_entity": "Vakantiemodus (schakelaar)",
-          "return_time_entity": "Verwachte terugkomst (datum/tijd)",
-          "grid_power_sensor": "Netimport (sensor, W)",
-          "unit_outside_sensor": "Buitentemperatuur van de warmtepomp zelf (alleen informatie, optioneel)",
-          "coil_sensor": "Coil-/verdampertemperatuur van de pomp (pg_temp, optioneel)"
+          "room_temp_sensor": "Kamertemperatuur (hoofdruimte)",
+          "extra_room_sensors": "Extra ruimtes (optioneel, meerdere mogelijk)",
+          "room_mode": "Hoe worden meerdere ruimtes gebruikt?",
+          "outside_temp_sensor": "Buitentemperatuur",
+          "flow_temp_sensor": "Aanvoertemperatuur (optioneel)",
+          "return_temp_sensor": "Retourtemperatuur (optioneel)",
+          "floor_temp_sensor": "Vloer-/dekvloertemperatuur (optioneel)"
         },
         "data_description": {
           "room_temp_sensor": "Meest representatieve binnentemperatuur, bijvoorbeeld in de woonkamer.",
+          "extra_room_sensors": "Alle ruimtes delen één waterkring, dus per ruimte stoken kan niet. Extra ruimtes kunnen wel bewaakt worden (bijv. slaapkamer niet kouder dan een minimum).",
+          "room_mode": "Hoofdruimte = stuurt, extra ruimtes bewaken alleen een minimum. Gemiddelde = gemiddelde van alle ruimtes. Koudste = de koudste ruimte stuurt.",
           "outside_temp_sensor": "Liefst een sensor die niet in de zon hangt.",
-          "target_setpoint_entity": "De entiteit waarmee de gewenste watertemperatuur van de warmtepomp wordt ingesteld (bijv. Tuya Local). Leeg = alleen meten en leren, niets aansturen.",
-          "heatpump_switch": "Optioneel. Wordt alleen gebruikt in de zomer of bij flinke oververhitting.",
-          "control_mode": "Op welke watertemperatuur het doel van je warmtepomp betrekking heeft.",
-          "setpoint_step": "Resolutie van de warmtepomp (veel Tuya-pompen: 1 °C). De regeling middelt automatisch over de tijd.",
-          "return_temp_sensor": "Nodig voor het leren van het vloermodel (of gebruik een vloersensor).",
           "flow_temp_sensor": "Nodig voor het leren van het opwarmgedrag van de vloer.",
-          "floor_temp_sensor": "Optioneel, maakt het model nauwkeuriger. Zonder deze sensor wordt de retourtemperatuur gebruikt.",
+          "return_temp_sensor": "Nodig voor het leren van het vloermodel (of gebruik een vloersensor).",
+          "floor_temp_sensor": "Optioneel, maakt het model nauwkeuriger. Zonder deze sensor wordt de retourtemperatuur gebruikt."
+        }
+      },
+      "pomp": {
+        "title": "Stap 3 van 5 – Warmtepomp",
+        "description": "Hoe meer van deze gegevens, hoe slimmer de regeling (frequentietabel, COP, ontdooi-detectie). Alles is optioneel.",
+        "data": {
+          "compressor_freq_sensor": "Compressorfrequentie",
+          "power_sensor": "Elektrisch vermogen",
+          "voltage_sensor": "Spanning",
+          "current_sensor": "Stroomsterkte",
+          "flow_rate_sensors": "Doorstromingssensoren (meerdere mogelijk)",
+          "coil_sensor": "Coil-/verdampertemperatuur",
+          "unit_outside_sensor": "Buitentemperatuur van de pomp zelf"
+        },
+        "data_description": {
           "compressor_freq_sensor": "Hiermee weet de regeling wanneer de pomp echt verwarmt.",
           "power_sensor": "In W of kW.",
           "voltage_sensor": "Alleen als er geen vermogenssensor is.",
           "current_sensor": "Alleen als er geen vermogenssensor is.",
-          "flow_rate_sensor_1": "Voor berekening van thermisch vermogen en COP.",
-          "flow_rate_sensor_2": "Alleen bij parallelle circuits die opgeteld moeten worden.",
+          "flow_rate_sensors": "Voor berekening van thermisch vermogen en COP. Meerdere sensoren (parallelle circuits) worden opgeteld.",
+          "coil_sensor": "Optioneel. Maakt snellere ontdooi-detectie mogelijk en meet of een ontdooi het ijs echt wegsmelt (coil moet 25-45 °C halen).",
+          "unit_outside_sensor": "Optioneel. Wordt NIET voor de regeling gebruikt (kan bevriezen), alleen om ontdooien te leren en om sensorafwijkingen te melden."
+        }
+      },
+      "aansturing": {
+        "title": "Stap 4 van 5 – Aansturing",
+        "description": "Laat beide leeg om eerst alleen te meten en te leren (schaduwmodus); er wordt dan niets aangestuurd.",
+        "data": {
+          "target_setpoint_entity": "Doeltemperatuur warmtepomp",
+          "heatpump_switch": "Warmtepomp aan/uit"
+        },
+        "data_description": {
+          "target_setpoint_entity": "De entiteit waarmee de gewenste watertemperatuur van de warmtepomp wordt ingesteld (bijv. Tuya Local).",
+          "heatpump_switch": "Optioneel. Wordt alleen gebruikt in de zomer of bij flinke oververhitting."
+        }
+      },
+      "extras": {
+        "title": "Stap 5 van 5 – Extra's",
+        "description": "Vink aan wat je wilt koppelen; per keuze volgt nog een kort scherm. Niets aanvinken kan ook.",
+        "data": {
+          "extra_weer_prijs": "Weer en stroomprijs",
+          "extra_zon_net": "Zonnepanelen en netaansluiting",
+          "extra_ramen": "Ramen en deuren",
+          "extra_aanwezigheid": "Aanwezigheid en vakantie",
+          "extra_tapwater": "Warm tapwater",
+          "extra_meldingen": "Meldingen naar je telefoon"
+        },
+        "data_description": {
+          "extra_weer_prijs": "Voorspelling van buitentemperatuur/zon en goedkope uren.",
+          "extra_zon_net": "Gratis warmte bij zonne-overschot en bescherming tegen pieken.",
+          "extra_ramen": "Stoken pauzeert als er te lang iets openstaat.",
+          "extra_aanwezigheid": "Lager setpoint als niemand thuis is, voorverwarmen vóór terugkomst.",
+          "extra_tapwater": "Alleen als de pomp ook tapwater maakt.",
+          "extra_meldingen": "Vorst, ijs, te koude kamer, sensorproblemen en het weekrapport."
+        }
+      },
+      "weer_prijs": {
+        "title": "Weer en stroomprijs",
+        "data": {
+          "weather_entity": "Weersverwachting",
+          "electricity_price_sensor": "Stroomprijs"
+        },
+        "data_description": {
           "weather_entity": "Voor voorspelling van buitentemperatuur en zon.",
-          "electricity_price_sensor": "Optioneel. Een voorspelling in de attributen (Nordpool, EPEX, Frank Energie, ENTSO-E) wordt automatisch herkend.",
-          "pv_power_sensor": "Optioneel. Bij overschot wordt goedkoper/gratis warmte in de vloer opgeslagen.",
-          "dhw_temp_sensor": "Optioneel. Alleen invullen als de warmtepomp ook warm tapwater maakt; zet de tapwaterfunctie aan.",
+          "electricity_price_sensor": "Een voorspelling in de attributen (Nordpool, EPEX, Frank Energie, ENTSO-E) wordt automatisch herkend."
+        }
+      },
+      "zon_net": {
+        "title": "Zonnepanelen en net",
+        "data": {
+          "pv_power_sensor": "Zonnepaneelvermogen",
+          "grid_power_sensor": "Netimport (W)"
+        },
+        "data_description": {
+          "pv_power_sensor": "Bij overschot wordt goedkopere/gratis warmte in de vloer opgeslagen.",
+          "grid_power_sensor": "Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort."
+        }
+      },
+      "ramen": {
+        "title": "Ramen en deuren",
+        "description": "Kies zoveel sensoren als je hebt.",
+        "data": {
+          "open_sensors": "Ramen en deuren (sensoren)"
+        },
+        "data_description": {
+          "open_sensors": "Staat er langer dan de ingestelde tijd iets open, dan pauzeert het stoken (met vorstbeveiliging) en wordt er niet van geleerd."
+        }
+      },
+      "aanwezigheid": {
+        "title": "Aanwezigheid en vakantie",
+        "data": {
+          "presence_entities": "Aanwezigheid (personen/trackers)",
+          "holiday_entity": "Vakantiemodus",
+          "return_time_entity": "Verwachte terugkomst"
+        },
+        "data_description": {
+          "presence_entities": "Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
+          "holiday_entity": "Staat deze aan, dan geldt altijd het afwezig-setpoint.",
+          "return_time_entity": "Bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd."
+        }
+      },
+      "tapwater": {
+        "title": "Warm tapwater",
+        "data": {
+          "dhw_temp_sensor": "Tapwatervat temperatuur",
+          "dhw_switch": "Tapwater aanvragen",
+          "dhw_setpoint_entity": "Doeltemperatuur tapwater"
+        },
+        "data_description": {
+          "dhw_temp_sensor": "Alleen invullen als de warmtepomp ook warm tapwater maakt.",
           "dhw_switch": "Schakelaar die een tapwatercyclus start/stopt.",
-          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet.",
-          "open_sensors": "Optioneel. Staat er langer dan de ingestelde tijd iets open, dan pauzeert het stoken (met vorstbeveiliging) en wordt er niet van geleerd.",
-          "presence_entities": "Optioneel. Is niemand thuis, dan zakt de temperatuur naar het afwezig-setpoint.",
-          "holiday_entity": "Optioneel. Staat deze aan, dan geldt altijd het afwezig-setpoint.",
-          "return_time_entity": "Optioneel, bijv. een input_datetime. Vloerverwarming is traag: met een terugkeertijd wordt er op tijd voorverwarmd.",
-          "grid_power_sensor": "Optioneel. Vermogen dat uit het net wordt afgenomen (positief = import). Bij langdurig overschrijden van de limiet pauzeert het stoken kort (capaciteitstarief of batterijbescherming).",
-          "unit_outside_sensor": "Optioneel. De buitensensor op het rooster van de pomp (kan bevriezen) wordt NIET gebruikt voor de regeling, alleen om ontdooien te leren en te tonen.",
-          "coil_sensor": "Optioneel. Maakt snellere ontdooi-detectie mogelijk en meet of een ontdooi het ijs echt wegsmelt (coil moet 25-45 °C halen). Twee zwakke ontdooicycli achter elkaar geven een ijsmelding."
+          "dhw_setpoint_entity": "Optioneel: wordt tijdens een cyclus op de gewenste temperatuur gezet."
+        }
+      },
+      "meldingen": {
+        "title": "Meldingen",
+        "description": "Kies naar welke apparaten meldingen gaan (bijv. de Home Assistant-app op je telefoon).",
+        "data": {
+          "notify_services": "Meldingsdiensten"
+        },
+        "data_description": {
+          "notify_services": "Alleen belangrijke meldingen; je kunt elke soort per instelling uitzetten of de drempels aanpassen."
         }
       }
     },
@@ -149,12 +183,49 @@
         "0.5": "0,5 °C",
         "1.0": "1 °C"
       }
+    },
+    "pump_profile": {
+      "options": {
+        "alsavo": "Alsavo / Tuya (afgestemd)",
+        "algemeen": "Algemeen (voorzichtige start)"
+      }
+    },
+    "room_mode": {
+      "options": {
+        "hoofd": "Hoofdruimte stuurt, extra ruimtes bewaken",
+        "gemiddelde": "Gemiddelde van alle ruimtes",
+        "koudste": "Koudste ruimte stuurt"
+      }
     }
   },
   "services": {
     "reset_model": {
       "name": "Reset geleerd model",
       "description": "Wis het geleerde huis- en vloermodel en de avondcorrectie."
+    },
+    "exporteer": {
+      "name": "Exporteer instellingen en geleerde gegevens",
+      "description": "Schrijft alle instellingen, schakelaars en (optioneel) het geleerde model naar slimme_warmtepomp_export.json in je configuratiemap en geeft ze ook als antwoord terug.",
+      "fields": {
+        "leerstatus": {
+          "name": "Ook het geleerde model",
+          "description": "Neem het geleerde huis- en vloermodel, de frequentietabel en de stooklijn mee."
+        }
+      }
+    },
+    "importeer": {
+      "name": "Importeer instellingen en geleerde gegevens",
+      "description": "Leest slimme_warmtepomp_export.json uit je configuratiemap (of de meegegeven gegevens) en past ze toe. Waarden blijven binnen de toegestane grenzen.",
+      "fields": {
+        "leerstatus": {
+          "name": "Ook het geleerde model",
+          "description": "Zet ook het geleerde model terug. Uit = alleen instellingen en schakelaars."
+        },
+        "data": {
+          "name": "Gegevens",
+          "description": "Optioneel. De inhoud van een export; zonder wordt het bestand gebruikt."
+        }
+      }
     }
   },
   "entity": {
@@ -179,6 +250,24 @@
           }
         }
       }
+    }
+  },
+  "issues": {
+    "unavailable": {
+      "title": "Sensor zonder waarde",
+      "description": "{entity} ({role}) geeft al geruime tijd geen waarde. De regeling gebruikt een noodwaarde totdat de sensor terug is. Controleer de batterij, het bereik of de integratie."
+    },
+    "stale": {
+      "title": "Sensor wordt niet bijgewerkt",
+      "description": "{entity} ({role}) is al {hours} uur niet bijgewerkt. Waarschijnlijk is de sensor of de verbinding vastgelopen."
+    },
+    "implausible": {
+      "title": "Onwaarschijnlijke sensorwaarde",
+      "description": "{entity} ({role}) meldt {value}, dat kan niet kloppen. Controleer de eenheid en de sensor."
+    },
+    "outside": {
+      "title": "Buitentemperatuur wijkt af",
+      "description": "De buitentemperatuur van de regeling ({a} °C) wijkt {diff} °C af van de buitensensor van de pomp ({b} °C). Eén van beide sensoren geeft waarschijnlijk een verkeerde waarde (zon op de sensor?)."
     }
   }
 }

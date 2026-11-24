@@ -62,6 +62,29 @@ class DecisionSensor(SlimmeWPEntity, SensorEntity):
         return None if d is None else self._getter(d)
 
 
+class WeekReportSensor(SlimmeWPEntity, SensorEntity):
+    """kWh of the last 7 days as state, the readable weekly report in the attribute ``rapport``."""
+
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_icon = "mdi:file-chart-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "weekrapport", "Slimme WP Weekrapport", "sensor.slimme_wp_weekrapport")
+
+    @property
+    def native_value(self):
+        rep = self.coordinator.week_data
+        return round(rep["kwh"], 1) if rep else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        rep = self.coordinator.week_data or {}
+        return {"rapport": self.coordinator.week_report, "dagen": rep.get("days"),
+                "kosten": round(rep["cost"], 2) if rep else None,
+                "comfort_percentage": round(rep["comfort"] * 100) if rep.get("comfort") is not None else None}
+
+
 def _diag(name):
     return lambda d: d.diag.get(name)
 
@@ -72,6 +95,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     TEMP, KWH = UnitOfTemperature.CELSIUS, UnitOfEnergy.KILO_WATT_HOUR
     entities = [
         SetpointSensor(c),
+        WeekReportSensor(c),
         # --- v1 entities (same unique ids)
         DecisionSensor(c, "thermisch_vermogen", "Slimme WP Thermisch Vermogen", lambda d: d.thermal_kw,
                        UnitOfPower.KILO_WATT, SensorDeviceClass.POWER, M, entity_suffix="thermisch_vermogen"),

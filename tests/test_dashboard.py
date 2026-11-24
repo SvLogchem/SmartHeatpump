@@ -27,11 +27,13 @@ def _states(config=None):
     for eid in list(h.states.d):
         states[eid] = {"state": "1", "attributes": {}}
     states["sensor.slimme_wp_setpoint"]["attributes"] = {"invoer_sensoren": coordinator.input_entities()}
+    for role, eid in coordinator.input_entities().items():           # the user's own sensors exist in Home Assistant too
+        states.setdefault(eid, {"state": "1", "attributes": {}})
     return states
 
 
-def _run(states, mini=False):
-    out = subprocess.run([NODE, str(CHECK), str(JS)], input=json.dumps({"states": states, "mini": mini}),
+def _run(states, mini=False, language=None):
+    out = subprocess.run([NODE, str(CHECK), str(JS)], input=json.dumps({"states": states, "mini": mini, "language": language}),
                          capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout.strip().splitlines()[-1])
@@ -88,3 +90,58 @@ def test_every_number_is_in_the_javascript_catalog_text():
     from engine.settings import NUMBER_SPECS
     for key, *_ in NUMBER_SPECS:
         assert re.search(rf'\["{key}",\s*"', src), key
+
+
+def _config_with_rooms(extra_rooms, flows):
+    cfg = dict(G.CONFIG)
+    cfg["extra_room_sensors"] = extra_rooms
+    cfg["flow_rate_sensors"] = flows
+    return cfg
+
+
+def test_extra_rooms_and_any_number_of_flow_sensors_show_up():
+    states = _states(_config_with_rooms(["sensor.slaapkamer", "sensor.werkkamer"], ["sensor.f1", "sensor.f2", "sensor.f3"]))
+    r = _run(states)
+    for own in ("sensor.slaapkamer", "sensor.werkkamer", "sensor.f1", "sensor.f2", "sensor.f3"):
+        assert own in r["cfg_entities"], own
+    assert "Ruimtes" in r["names"] and "Flow 3" in r["names"] and "Kamer 3" in r["names"]
+    assert r["missing"] == [], r["missing"]
+    # without extra rooms there is no rooms card
+    assert "Ruimtes" not in _run(_states())["names"]
+
+
+def test_weekly_report_and_new_settings_are_on_the_dashboard():
+    r = _run(_states())
+    assert "Weekrapport" in r["names"] and "sensor.slimme_wp_weekrapport" in r["cfg_entities"]
+    cfg = _config_with_rooms(["sensor.slaapkamer"], ["sensor.f1"])
+    cfg["notify_services"] = ["notify.mobile_app_pixel"]
+    r = _run(_states(cfg))
+    assert "Meerdere ruimtes" in r["names"] and "Meldingen" in r["names"]
+    assert "switch.slimme_wp_weekrapport_actief" in r["cfg_entities"] and "number.slimme_wp_min_extra_kamer" in r["cfg_entities"]
+    assert "number.slimme_wp_melding_te_koud_uren" in r["cfg_entities"]
+
+
+def test_every_dashboard_text_has_an_english_version():
+    states = _states(_config_with_rooms(["sensor.slaapkamer"], ["sensor.f1", "sensor.f2"]))
+    cfg = _config_with_rooms(["sensor.slaapkamer"], ["sensor.f1", "sensor.f2"])
+    cfg["notify_services"] = ["notify.mobile_app_pixel"]
+    r = _run(_states(cfg))
+    assert r["untranslated"] == [], r["untranslated"]
+
+
+DUTCH_WORDS = re.compile(r"\b(de|het|een|niet|nog|van|voor|bij|als|dat|wordt|geen|nu|vloer|buiten|kamer|gemeten|geleerd|tijd|uit|aan)\b", re.I)
+
+
+def test_english_dashboard_has_no_dutch_texts_left():
+    states = _states(_config_with_rooms(["sensor.slaapkamer"], ["sensor.f1", "sensor.f2"]))
+    nl, en = _run(states, language="nl"), _run(states, language="en-GB")
+    assert en["views"][0]["title"] == "Smart HP Overview" and nl["views"][0]["title"] == "Slimme WP Overzicht"
+    assert [v["path"] for v in en["views"]] == [v["path"] for v in nl["views"]]          # same URLs in both languages
+    assert en["cfg_entities"] == nl["cfg_entities"]                                      # same entities
+    left = [x for x in en["names"] if DUTCH_WORDS.search(x)]
+    assert not left, left
+    for md in en["markdown"]:
+        visible = re.sub(r"\{%.*?%\}|\{\{.*?\}\}", " ", md, flags=re.S)
+        assert not DUTCH_WORDS.search(visible), visible
+    assert any("Setpoint - return difference" in md for md in en["markdown"])
+    assert any("setpoint - retour" in md for md in nl["markdown"])

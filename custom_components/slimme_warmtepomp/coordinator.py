@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -15,12 +16,15 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_CONTROL_MODE, CONF_CURRENT, CONF_GRID, CONF_UNIT_OUTSIDE, CONF_COIL, CONF_HOLIDAY, CONF_OPEN_SENSORS, CONF_PRESENCE, CONF_RETURN_TIME, CONF_DHW_SETPOINT, CONF_DHW_SWITCH, CONF_DHW_TEMP, CONF_FLOOR,
     CONF_FLOW, CONF_FLOW_RATE_1, CONF_FLOW_RATE_2, CONF_FREQ, CONF_OUTSIDE, CONF_POWER, CONF_PRICE,
-    CONF_PV, CONF_RETURN, CONF_ROOM, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
-    DOMAIN, FORECAST_REFRESH_MIN, FORECAST_TYPES, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN,
+    CONF_PV, CONF_RETURN, CONF_ROOM, CONF_EXTRA_ROOMS, CONF_ROOM_MODE, CONF_FLOW_RATES, CONF_NOTIFY, CONF_PUMP_PROFILE, CONF_STEP, CONF_SWITCH, CONF_TARGET, CONF_VOLTAGE, CONF_WEATHER,
+    DOMAIN, FORECAST_REFRESH_MIN, FORECAST_TYPES, SAVE_INTERVAL_MIN, UPDATE_INTERVAL_MIN, VERSION,
 )
+from .engine.rooms import combine as combine_rooms
+from .engine.health import SensorHealth
+from .engine.i18n import lang, msg, role_name
 from .engine.controller import Decision, Inputs, PROGRAM_DAY, SmartController
 from .engine.prices import parse_price_forecast
-from .engine.settings import DEFAULTS, SWITCH_DEFAULTS
+from .engine.settings import NUMBER_SPECS, DEFAULTS, PROFILE_PRESETS, SWITCH_DEFAULTS
 
 _LOGGER = logging.getLogger(__name__)
 _BAD = ("unknown", "unavailable", "none", "")
@@ -39,7 +43,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
         self._lock = asyncio.Lock()
         # user-facing state, written by the entities
-        self.settings: dict[str, float] = dict(DEFAULTS)
+        self.settings: dict[str, float] = {**DEFAULTS, **PROFILE_PRESETS.get(self.cfg.get(CONF_PUMP_PROFILE), {})}
         self.switches: dict[str, bool] = dict(SWITCH_DEFAULTS)
         self.hvac_on = True
         self.preset = PROGRAM_DAY
@@ -53,6 +57,14 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self._saved_at: datetime | None = None
         self._saved_defrosts = 0.0
         self._coil_samples: list = []
+        self.rooms_info: dict = {}
+        self.health = SensorHealth()
+        self._issues: set[str] = set()
+        self._notified: dict[str, datetime] = {}
+        self._cold_since: datetime | None = None
+        self.week_report: str | None = None
+        self.week_data: dict | None = None
+        self._week_sent: str | None = None
 
     # ------------------------------------------------------------------ config
     @property
@@ -72,17 +84,71 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             "window": bool(cfg.get(CONF_OPEN_SENSORS)),
             "away": bool(cfg.get(CONF_PRESENCE) or cfg.get(CONF_HOLIDAY)),
             "grid": bool(cfg.get(CONF_GRID)),
+            "rooms": bool(cfg.get(CONF_EXTRA_ROOMS)),
+            "notify": bool(cfg.get(CONF_NOTIFY)),
         }.get(group, False)
+
+    def flow_rate_entities(self) -> list[str]:
+        """The flow sensors (any number); entries from before v2.18 stored two fixed fields."""
+        cfg = self.cfg
+        lst = cfg.get(CONF_FLOW_RATES)
+        if lst is None:
+            lst = [cfg.get(CONF_FLOW_RATE_1), cfg.get(CONF_FLOW_RATE_2)]
+        return [e for e in (lst if isinstance(lst, list) else [lst]) if e]
+
+    def extra_room_entities(self) -> list[str]:
+        rooms = self.cfg.get(CONF_EXTRA_ROOMS) or []
+        return [e for e in (rooms if isinstance(rooms, list) else [rooms]) if e]
 
     # ------------------------------------------------------------------ storage
     async def async_load(self) -> None:
         data = await self._store.async_load()
         if isinstance(data, dict):
             self.controller.import_state(data)
+            self._week_sent = (data.get("coordinator") or {}).get("week_sent")
 
     async def async_save(self) -> None:
-        await self._store.async_save(self.controller.export_state())
+        await self._store.async_save({**self.controller.export_state(), "coordinator": {"week_sent": self._week_sent}})
         self._saved_at = dt_util.utcnow()
+
+    # ------------------------------------------------------------------ export / import
+    EXPORT_MARK = "slimme_warmtepomp_export"
+
+    def export_bundle(self, include_state: bool = True) -> dict:
+        """Settings, switches and (optionally) the learned state: to back up or to share with someone who has the same pump."""
+        bundle = {self.EXPORT_MARK: 1, "versie": VERSION, "instellingen": {k: v for k, v in self.settings.items() if k in DEFAULTS},
+                  "schakelaars": dict(self.switches)}
+        if include_state:
+            bundle["leerstatus"] = self.controller.export_state()
+        return bundle
+
+    async def import_bundle(self, bundle: dict, include_state: bool = True) -> dict:
+        """Apply an export; unknown or invalid entries are skipped and reported."""
+        if not isinstance(bundle, dict) or bundle.get(self.EXPORT_MARK) != 1:
+            raise HomeAssistantError("Not an export of Slimme Warmtepomp")
+        ranges = {s[0]: (s[2], s[3]) for s in NUMBER_SPECS}
+        applied, skipped = 0, []
+        for key, val in (bundle.get("instellingen") or {}).items():
+            try:
+                lo, hi = ranges[key]
+                self.settings[key] = min(max(float(val), lo), hi)
+                applied += 1
+            except (KeyError, TypeError, ValueError):
+                skipped.append(key)
+        for key, val in (bundle.get("schakelaars") or {}).items():
+            if key in SWITCH_DEFAULTS and isinstance(val, bool):
+                self.switches[key] = val
+                applied += 1
+            else:
+                skipped.append(key)
+        learned = False
+        if include_state and isinstance(bundle.get("leerstatus"), dict):
+            async with self._lock:
+                self.controller.import_state(bundle["leerstatus"])
+            learned = True
+        await self.async_save()
+        await self.async_request_refresh()
+        return {"toegepast": applied, "overgeslagen": skipped, "leerstatus": learned}
 
     async def async_reset_model(self, percentage: float = 100.0) -> None:
         async with self._lock:
@@ -234,8 +300,11 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             v, a = self._num(cfg.get(CONF_VOLTAGE)), self._num(cfg.get(CONF_CURRENT))
             if a is not None:
                 power = (v if v is not None else 230.0) * a
-        f1, f2 = self._flow_lh(cfg.get(CONF_FLOW_RATE_1)), self._flow_lh(cfg.get(CONF_FLOW_RATE_2))
-        flow_lh = None if f1 is None and f2 is None else (f1 or 0.0) + (f2 or 0.0)
+        flows = [self._flow_lh(e) for e in self.flow_rate_entities()]
+        flow_lh = None if all(f is None for f in flows) else sum(f or 0.0 for f in flows)
+        room, self.rooms_info = combine_rooms(
+            self._num(cfg.get(CONF_ROOM)), [(e, self._num(e)) for e in self.extra_room_entities()],
+            cfg.get(CONF_ROOM_MODE, "hoofd"), self.settings.get("min_extra_kamer", 17.0))
 
         price_state = self._state(cfg.get(CONF_PRICE))
         forecast = []
@@ -265,7 +334,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
 
         return Inputs(
             now=now,
-            room=self._num(cfg.get(CONF_ROOM)), outside=outside,
+            room=room, outside=outside,
             unit_outside=self._num(cfg.get(CONF_UNIT_OUTSIDE)),
             coil_temp=self._num(cfg.get(CONF_COIL)), coil_samples=self._take_coil_samples(),
             flow=self._num(cfg.get(CONF_FLOW)), ret=self._num(cfg.get(CONF_RETURN)),
@@ -334,60 +403,140 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             if d.dhw_request and d.dhw_setpoint and cfg.get(CONF_DHW_SETPOINT):
                 await self._set_number(cfg[CONF_DHW_SETPOINT], d.dhw_setpoint)
 
-    ICE_TEXT = {
-        "cop_zakt": "de COP zakt ver onder het niveau direct na het ontdooien",
-        "herstelt_niet": "de COP na het ontdooien wordt steeds slechter (ontdooien lost het ijs niet op)",
-        "vaker": "de pomp ontdooit steeds vaker",
-        "ontdooit_te_laat": "de pomp ontdooit niet terwijl het koud is en hij al lang draait",
-        "pomp_sensor_koud": "de buitensensor van de pomp is veel kouder dan de buitentemperatuur",
-        "ontdooi_zwak": "de ontdooicycli smelten het ijs niet weg (de coil wordt nauwelijks warm)",
-        "coil_koud": "de coil is vlak voor het ontdooien extreem koud (veel ijs)",
-        "kritiek": "de COP is langdurig rond 1",
-    }
+    # ------------------------------------------------------------------ messages
+    @property
+    def language(self) -> str:
+        return lang(getattr(self.hass.config, "language", "nl"))
+
+    async def _notify(self, kind: str, title: str, message: str, now, *, every_h: float, persistent: bool = False) -> bool:
+        """Send a message to the chosen notify services (and optionally as persistent notification), at most
+        once per ``every_h`` hours per kind."""
+        last = self._notified.get(kind)
+        if last is not None and (now - last).total_seconds() < every_h * 3600:
+            return False
+        self._notified[kind] = now
+        if persistent:
+            await self.hass.services.async_call("persistent_notification", "create", {
+                "title": title, "message": message, "notification_id": f"slimme_warmtepomp_{kind}"}, blocking=False)
+        for svc in self.cfg.get(CONF_NOTIFY) or []:
+            domain, _, name = str(svc).partition(".")
+            if domain and name:
+                try:
+                    await self.hass.services.async_call(domain, name, {"title": title, "message": message}, blocking=False)
+                except HomeAssistantError as err:
+                    _LOGGER.warning("Could not send a message through %s: %s", svc, err)
+        return True
 
     async def _notify_frost(self, decision: Decision, now) -> None:
         """Tell the person when the frost protection had to switch the heat pump on."""
         if not decision.frost_forced:
             return
-        last = getattr(self, "_frost_notified", None)
-        if last is not None and (now - last).total_seconds() < 6 * 3600:
-            return
-        self._frost_notified = now
-        why = ("het water in de pomp is te koud" if self.controller.frost_reason == "water"
-               else "het buiten onder de vorstgrens is")
-        await self.hass.services.async_call("persistent_notification", "create", {
-            "title": "Warmtepomp: vorstbeveiliging",
-            "message": ("De vorstbeveiliging heeft de warmtepomp ingeschakeld omdat " + why + ". "
-                        "De pomp blijft draaien op het laagste setpoint zolang er vorstgevaar is."),
-            "notification_id": "slimme_warmtepomp_vorst"}, blocking=False)
+        L = self.language
+        why = msg(L, "frost_water" if self.controller.frost_reason == "water" else "frost_outside")
+        await self._notify("vorst", msg(L, "frost_title"), msg(L, "frost_body", why=why), now, every_h=6, persistent=True)
 
     async def _notify_icing(self, decision: Decision, now) -> None:
-        """One persistent notification (at most every 12 hours) when the pump seems to be icing up."""
+        """One notification (at most every 12 hours) when the pump seems to be icing up."""
         if decision.ice_level != "ijs":
             return
-        last = getattr(self, "_ice_notified", None)
-        if last is not None and now - last < timedelta(hours=12):
+        L = self.language
+        reasons = ", ".join(self._ice_text(r) for r in decision.diag.get("ijsvorming", {}).get("redenen", []))
+        await self._notify("ijsvorming", msg(L, "ice_title"), msg(L, "ice_body", reasons=reasons), now, every_h=12, persistent=True)
+
+    def _ice_text(self, reason: str) -> str:
+        try:
+            return msg(self.language, f"ice_{reason}")
+        except KeyError:
+            return reason
+
+    async def _notify_cold(self, decision: Decision, inp: Inputs, now) -> None:
+        """The room stays colder than wanted for hours: tell the person (the control may be stuck on something)."""
+        s = self.settings
+        too_cold = (inp.room is not None and self.hvac_on and not decision.summer and not decision.defrost
+                    and inp.room < decision.room_setpoint - s.get("melding_te_koud_marge", 1.5))
+        if not too_cold:
+            self._cold_since = None
             return
-        self._ice_notified = now
-        reasons = ", ".join(self.ICE_TEXT.get(r, r) for r in decision.diag.get("ijsvorming", {}).get("redenen", []))
-        await self.hass.services.async_call("persistent_notification", "create", {
-            "title": "Warmtepomp: mogelijk ijsvorming",
-            "message": ("De slimme regeling vermoedt dat de warmtepomp ijs ophoopt: " + reasons + ". "
-                        "Controleer de ontdooi-instellingen van de pomp (interval, starttemperatuur, maximale "
-                        "ontdooitijd) en kijk of de verdamper vrij is van ijs."),
-            "notification_id": "slimme_warmtepomp_ijsvorming"}, blocking=False)
+        self._cold_since = self._cold_since or now
+        hours = (now - self._cold_since).total_seconds() / 3600.0
+        if hours >= s.get("melding_te_koud_uren", 3.0):
+            L = self.language
+            await self._notify("te_koud", msg(L, "cold_title"), msg(
+                L, "cold_body", hours=hours, room=inp.room, target=decision.room_setpoint, reason=decision.reason), now, every_h=12)
+
+    # ------------------------------------------------------------------ sensor health (Repairs page)
+    def _health_readings(self, now) -> dict:
+        cfg, out = self.cfg, {}
+        for role, key in (("kamer", CONF_ROOM), ("buiten", CONF_OUTSIDE), ("aanvoer", CONF_FLOW), ("retour", CONF_RETURN),
+                          ("vloer", CONF_FLOOR), ("frequentie", CONF_FREQ), ("vermogen", CONF_POWER),
+                          ("pomp_setpoint", CONF_TARGET), ("pomp_schakelaar", CONF_SWITCH)):
+            ent = cfg.get(key)
+            if not ent:
+                continue
+            st = self._state(ent)
+            if st is None:
+                out[role] = {"entity": ent, "state": "unavailable", "value": None, "age_h": None}
+                continue
+            stamp = getattr(st, "last_reported", None) or getattr(st, "last_updated", None)
+            age = (now - stamp).total_seconds() / 3600.0 if stamp is not None and hasattr(stamp, "tzinfo") else None
+            out[role] = {"entity": ent, "state": st.state,
+                         "value": self._watts(ent) if role == "vermogen" else self._num(ent), "age_h": age}
+        return out
+
+    async def _check_health(self, now) -> None:
+        readings = self._health_readings(now)
+        problems = self.health.check(now, readings, self._num(self.cfg.get(CONF_UNIT_OUTSIDE)))
+        active = set()
+        L = self.language
+        for p in problems:
+            active.add(p.key)
+            text = msg(L, f"health_{p.kind}", entity=p.entity, role=role_name(L, p.role), **p.data)
+            if p.key not in self._issues:
+                self._issues.add(p.key)
+                ir.async_create_issue(
+                    self.hass, DOMAIN, p.key, is_fixable=False, severity=ir.IssueSeverity.WARNING,
+                    translation_key=p.kind, translation_placeholders={"entity": str(p.entity), "role": role_name(L, p.role),
+                    **{k: (f"{v:.1f}" if isinstance(v, float) else str(v)) for k, v in p.data.items()}})
+                await self._notify(f"health_{p.key}", msg(L, "health_title"), text, now, every_h=24)
+        for key in list(self._issues - active):
+            self._issues.discard(key)
+            ir.async_delete_issue(self.hass, DOMAIN, key)
+
+    # ------------------------------------------------------------------ weekly report
+    async def _weekly_report(self, now_local, decision: Decision) -> None:
+        """Monday morning: a summary of the last 7 days (as sensor text, and as message when notify is configured)."""
+        key = f"{now_local.isocalendar()[0]}-W{now_local.isocalendar()[1]:02d}"
+        rep = self.controller.usage.report(now_local, 7)
+        self.week_data = rep
+        L = self.language
+        if rep:
+            cop = f"{rep['kwh_th'] / rep['kwh']:.1f}" if rep["kwh"] > 0.5 and rep["kwh_th"] > 0 else msg(L, "unknown")
+            kwh_dd = f"{rep['kwh'] / rep['dd']:.1f}" if rep["dd"] >= 1.0 else msg(L, "unknown")
+            comfort = f"{rep['comfort'] * 100:.0f}%" if rep["comfort"] is not None else msg(L, "unknown")
+            self.week_report = msg(L, "week_body", days=rep["days"], kwh=rep["kwh"], cost=rep["cost"], cop=cop, kwh_dd=kwh_dd,
+                                   comfort=comfort, starts=rep["defrosts"], run_h=rep["run_h"])
+        if now_local.weekday() != 0 or now_local.hour < 8 or self._week_sent == key or not rep:
+            return
+        self._week_sent = key
+        if self.switches.get("weekrapport_actief", True) and self.cfg.get(CONF_NOTIFY):
+            await self._notify("weekrapport", msg(L, "week_title"), self.week_report, dt_util.utcnow(), every_h=24 * 5)
 
     # role -> config key: the sensors the user connected (the generated dashboard shows and graphs exactly these)
     _INPUT_ROLES = {
         "kamer": CONF_ROOM, "buiten": CONF_OUTSIDE, "aanvoer": CONF_FLOW, "retour": CONF_RETURN, "vloer": CONF_FLOOR,
-        "frequentie": CONF_FREQ, "debiet_1": CONF_FLOW_RATE_1, "debiet_2": CONF_FLOW_RATE_2, "vermogen": CONF_POWER,
+        "frequentie": CONF_FREQ, "vermogen": CONF_POWER,
         "spanning": CONF_VOLTAGE, "stroom": CONF_CURRENT, "weer": CONF_WEATHER, "prijs": CONF_PRICE, "zonnepanelen": CONF_PV,
         "net": CONF_GRID, "buiten_unit": CONF_UNIT_OUTSIDE, "coil": CONF_COIL, "tank": CONF_DHW_TEMP,
         "pomp_setpoint": CONF_TARGET, "pomp_schakelaar": CONF_SWITCH,
     }
 
     def input_entities(self) -> dict[str, str]:
-        return {role: self.cfg[key] for role, key in self._INPUT_ROLES.items() if isinstance(self.cfg.get(key), str) and self.cfg.get(key)}
+        out = {role: self.cfg[key] for role, key in self._INPUT_ROLES.items() if isinstance(self.cfg.get(key), str) and self.cfg.get(key)}
+        for i, ent in enumerate(self.flow_rate_entities(), 1):
+            out[f"debiet_{i}"] = ent
+        for i, ent in enumerate(self.extra_room_entities(), 2):
+            out[f"kamer_{i}"] = ent
+        return out
 
     def _log_changes(self, d: Decision) -> None:
         """One debug line whenever the decision changes in a way that matters (enable with logger: debug)."""
@@ -405,11 +554,16 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             inp = await self._build_inputs()
             async with self._lock:
                 decision = await self.hass.async_add_executor_job(self.controller.step, inp)
+            if self.extra_room_entities():
+                decision.diag["kamers"] = self.rooms_info
             await self._execute(decision)
             self._log_changes(decision)
             now = dt_util.utcnow()
             await self._notify_icing(decision, now)
             await self._notify_frost(decision, now)
+            await self._notify_cold(decision, inp, now)
+            await self._check_health(now)
+            await self._weekly_report(dt_util.now(), decision)
             # save at once when a defrost was counted (so a restart never loses it), else every N minutes
             defrosts = self.controller.usage.cur.get("day", {}).get("defrosts", 0.0)
             new_defrost = defrosts > self._saved_defrosts

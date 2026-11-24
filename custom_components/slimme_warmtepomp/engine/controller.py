@@ -581,7 +581,9 @@ class SmartController:
                       else s["vaste_stroomprijs"])
         self.usage.update(now, dt_h=dt_h, e_dt=e_dt, outside=inp.outside, base=s["graaddag_basis"],
                           el_kwh=power_w / 1000.0 * e_dt, th_kwh=d.thermal_kw * e_dt, price=price_used,
-                          heating=heating, defrost=d.defrost, regeling_actief=inp.regeling_actief)
+                          heating=heating, defrost=d.defrost, regeling_actief=inp.regeling_actief,
+                          in_band=(None if inp.room is None or not inp.hvac_on or self.summer else
+                                   d.room_setpoint - s["tolerantie_laag"] - 0.1 <= inp.room <= d.room_setpoint + s["tolerantie_hoog"] + 0.1))
         self._usage_out = self.usage.summary(self.today["starts"])
 
         # ---- prices

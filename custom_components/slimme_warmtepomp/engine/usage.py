@@ -14,7 +14,7 @@ MIN_DD_WEEK = 1.0
 COMPARE_DAYS = 28
 DEFROST_GAP = timedelta(minutes=5)
 
-_FIELDS = ("dd", "kwh", "kwh_th", "cost", "run_min", "defrosts", "reg_s", "tot_s")
+_FIELDS = ("dd", "kwh", "kwh_th", "cost", "run_min", "defrosts", "reg_s", "tot_s", "comf_s", "chk_s")
 
 
 def _blank() -> dict:
@@ -37,7 +37,7 @@ class UsageStats:
     # ------------------------------------------------------------------ update
     def update(self, now: datetime, *, dt_h: float, e_dt: float, outside: float | None, base: float,
                el_kwh: float, th_kwh: float, price: float | None, heating: bool, defrost: bool,
-               regeling_actief: bool) -> None:
+               regeling_actief: bool, in_band: bool | None = None) -> None:
         keys = _keys(now)
         for period, key in keys.items():
             c = self.cur.get(period)
@@ -48,7 +48,8 @@ class UsageStats:
         add = {"kwh": el_kwh, "kwh_th": th_kwh, "tot_s": dt_h * 3600.0,
                "reg_s": dt_h * 3600.0 if regeling_actief else 0.0,
                "run_min": e_dt * 60.0 if heating else 0.0,
-               "cost": el_kwh * price if price is not None else 0.0}
+               "cost": el_kwh * price if price is not None else 0.0,
+               "comf_s": dt_h * 3600.0 if in_band else 0.0, "chk_s": dt_h * 3600.0 if in_band is not None else 0.0}
         if outside is not None:
             add["dd"] = max(0.0, base - outside) * dt_h / 24.0
         if defrost and not self._was_defrost and (self._last_defrost is None
@@ -97,6 +98,17 @@ class UsageStats:
         avg = lambda xs: round(sum(xs) / len(xs), 2) if xs else None
         return {"kwh_per_graaddag_regeling": avg(on), "kwh_per_graaddag_schaduw": avg(off),
                 "dagen_regeling": len(on), "dagen_schaduw": len(off)}
+
+    def report(self, now: datetime, days: int = 7) -> dict | None:
+        """Totals over the last ``days`` finished days (None without data)."""
+        today = now.date().isoformat()
+        rows = [v for k, v in sorted(self.history.items()) if k < today][-days:]
+        if not rows or sum(v["tot_s"] for v in rows) <= 0:
+            return None
+        s = lambda f: sum(v[f] for v in rows)
+        return {"days": len(rows), "kwh": s("kwh"), "kwh_th": s("kwh_th"), "cost": s("cost"), "dd": s("dd"),
+                "run_h": s("run_min") / 60.0, "defrosts": int(s("defrosts")),
+                "comfort": (s("comf_s") / s("chk_s")) if s("chk_s") > 0 else None}
 
     # ------------------------------------------------------------- persistence
     def to_dict(self) -> dict:

@@ -1288,3 +1288,156 @@ def test_manual_curve_corrections_are_interpolated_and_shift_the_setpoint():
     assert raw(3.0) == pytest.approx(raw(0.0) + 3.0, abs=0.6)
     c = SmartController(); d = c.step(_inp(_t(0)))
     assert d.diag["stooklijn_handmatig"] == 0.0
+
+
+# ---------- v2.18: several rooms ----------
+
+def test_rooms_main_room_leads_and_guard_rooms_only_have_a_minimum():
+    from engine.rooms import combine
+    v, info = combine(21.0, [("sensor.slaapkamer", 18.0)], "hoofd", 17.0)
+    assert v == 21.0 and info["tekort_bewaakt"] == 0.0              # guard room above its minimum: the main room decides
+    v, info = combine(21.0, [("sensor.slaapkamer", 15.5)], "hoofd", 17.0)
+    assert v == pytest.approx(19.5)                                  # 1.5 K under its minimum -> the controller sees 1.5 K less
+    v, _ = combine(21.0, [("a", 10.0)], "hoofd", 17.0)
+    assert v == pytest.approx(18.0)                                  # capped at 3 K: one cold room cannot run the house wild
+
+
+def test_rooms_average_and_coldest():
+    from engine.rooms import combine
+    assert combine(21.0, [("a", 19.0), ("b", 20.0)], "gemiddelde", 17.0)[0] == pytest.approx(20.0)
+    assert combine(21.0, [("a", 19.0), ("b", 20.0)], "koudste", 17.0)[0] == 19.0
+
+
+def test_rooms_survive_a_dropped_sensor():
+    from engine.rooms import combine
+    assert combine(None, [("a", 19.0), ("b", 20.0)], "hoofd", 17.0)[0] == pytest.approx(19.5)     # main room gone
+    assert combine(21.0, [("a", None)], "koudste", 17.0)[0] == 21.0                                 # guard room gone
+    assert combine(None, [("a", None)], "gemiddelde", 17.0)[0] is None
+    assert combine(20.5, [], "koudste", 17.0)[0] == 20.5                                            # no extra rooms: unchanged
+    assert combine(20.5, [("a", 19.0)], "onzin", 17.0)[0] == 20.5                                   # unknown mode -> main room
+
+
+# ---------- v2.18: sensor health, report data, messages ----------
+
+def _readings(**over):
+    base = {"kamer": {"entity": "sensor.room", "state": "20.5", "value": 20.5, "age_h": 0.1},
+            "buiten": {"entity": "sensor.out", "state": "5", "value": 5.0, "age_h": 0.1},
+            "retour": {"entity": "sensor.ret", "state": "27", "value": 27.0, "age_h": 0.1}}
+    base.update(over)
+    return base
+
+
+def test_health_reports_only_problems_that_last_and_clears_them():
+    from engine.health import SensorHealth
+    h, t0 = SensorHealth(), _t(0)
+    gone = _readings(retour={"entity": "sensor.ret", "state": "unavailable", "value": None, "age_h": None})
+    assert h.check(t0, gone) == []                                           # one missing reading is normal
+    assert h.check(t0 + timedelta(minutes=29), gone) == []
+    pr = h.check(t0 + timedelta(minutes=31), gone)
+    assert [p.key for p in pr] == ["unavailable_retour"] and pr[0].entity == "sensor.ret"
+    assert h.check(t0 + timedelta(minutes=40), _readings()) == []            # fixed: gone again
+    assert h.check(t0 + timedelta(minutes=80), gone) == []                   # and the timer restarts
+
+
+def test_health_stale_and_implausible_readings():
+    from engine.health import SensorHealth
+    h = SensorHealth()
+    stale = _readings(kamer={"entity": "sensor.room", "state": "20", "value": 20.0, "age_h": 7.0})
+    assert [p.kind for p in h.check(_t(0), stale)] == ["stale"]
+    wrong = _readings(buiten={"entity": "sensor.out", "state": "85", "value": 85.0, "age_h": 0.1})
+    assert h.check(_t(0), wrong) == []
+    assert [p.key for p in h.check(_t(11), wrong)] == ["implausible_buiten"]
+
+
+def test_health_outdoor_sensors_that_disagree():
+    from engine.health import SensorHealth
+    h = SensorHealth()
+    r = _readings(buiten={"entity": "sensor.out", "state": "-2", "value": -2.0, "age_h": 0.1})
+    assert h.check(_t(0), r, unit_outside=9.7) == []
+    pr = h.check(_t(125), r, unit_outside=9.7)
+    assert [p.key for p in pr] == ["outside_mismatch"] and round(pr[0].data["diff"]) == 12
+    assert h.check(_t(130), r, unit_outside=-1.0) == []                      # they agree again
+
+
+def test_usage_report_and_comfort_share():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    t = datetime(2026, 11, 2, 0, 0, tzinfo=TZ)
+    for day in range(8):                                                       # 8 days, hourly
+        for h in range(24):
+            now = t + timedelta(days=day, hours=h)
+            u.update(now, dt_h=1.0, e_dt=1.0, outside=5.0, base=18.0, el_kwh=0.5, th_kwh=1.5, price=0.25,
+                     heating=True, defrost=False, regeling_actief=True, in_band=(h < 18))
+    rep = u.report(t + timedelta(days=7, hours=9), 7)
+    assert rep["days"] == 7 and rep["kwh"] == pytest.approx(7 * 24 * 0.5)
+    assert rep["comfort"] == pytest.approx(18 / 24) and rep["kwh_th"] / rep["kwh"] == pytest.approx(3.0)
+    assert UsageStats().report(t, 7) is None
+    # state saved before v2.18 (no comfort fields) still loads
+    old = UsageStats(); old.from_dict({"cur": {"day": {"key": "2026-11-02", "kwh": 1.0}}, "history": {"2026-11-01": {"kwh": 2.0, "tot_s": 86400}}})
+    assert old.report(t + timedelta(days=1), 7)["comfort"] is None
+
+
+def test_messages_follow_the_home_assistant_language():
+    from engine.i18n import msg, lang, role_name
+    assert lang("nl") == "nl" and lang("nl-NL") == "nl" and lang("de") == "en" and lang(None) == "en" and lang("en-GB") == "en"
+    assert "vorstbeveiliging" in msg("nl", "frost_title").lower() and "frost protection" in msg("en", "frost_title").lower()
+    from engine.i18n import MESSAGES
+    assert set(MESSAGES["nl"]) == set(MESSAGES["en"])                         # no message missing in a language
+    assert role_name("en", "retour") == "return temperature" and role_name("nl", "retour") == "retourtemperatuur"
+
+
+# ---------- v2.18: suggestions for the setup wizard ----------
+
+def _cands():
+    from engine.suggest import Candidate as C
+    return [
+        C("sensor.warmtepomp_retour_temp", "Warmtepomp Retour Temp", "°C", "temperature", "localtuya"),
+        C("sensor.warmtepomp_aanvoer_temp", "Warmtepomp Aanvoer Temp", "°C", "temperature", "localtuya"),
+        C("sensor.warmtepomp_buiten_temp", "Warmtepomp Buiten Temp", "°C", "temperature", "localtuya"),
+        C("sensor.warmtepomp_pg_temp", "Warmtepomp Coil (PG) temperatuur", "°C", "temperature", "localtuya"),
+        C("sensor.warmtepomp_compressor_frequentie", "Compressor frequentie", "Hz", None, "localtuya"),
+        C("sensor.warmtepomp_compressor_stroom", "Compressor stroom", "A", None, "localtuya"),
+        C("sensor.warmtepomp_spanning", "Spanning", "V", None, "localtuya"),
+        C("sensor.warmtepomp_dc_spanning", "DC-spanning", "V", None, "localtuya"),
+        C("number.warmtepomp_setpoint", "Setpoint verwarmen", None, None, "localtuya"),
+        C("number.warmtepomp_defrost_interval_tijd", "Defrost interval", None, None, "localtuya"),
+        C("switch.warmtepomp_schakelaar", "Warmtepomp aan/uit", None, None, "localtuya"),
+        C("sensor.wp_elektrisch_vermogen_w", "WP elektrisch vermogen", "W", "power", "template"),
+        C("sensor.wp_totaal_thermisch_vermogen_kw", "WP totaal thermisch vermogen", "kW", "power", "template"),
+        C("sensor.flowsensing_belimo_flow_rate_lph", "Belimo flow rate", "l/h", None, "belimo"),
+        C("sensor.flowsensing_belimo_2_flow_rate_lph", "Belimo 2 flow rate", "l/h", None, "belimo"),
+        C("sensor.flowsensor_temp_tt101", "Flowsensor temp TT101", "°C", "temperature", "mqtt"),
+        C("sensor.vloer_dekvloer_temperatuur", "Dekvloer temperatuur", "°C", "temperature", "mqtt"),
+        C("sensor.woonkamer_temperatuur", "Woonkamer temperatuur", "°C", "temperature", "zha"),
+        C("sensor.slaapkamer_temperatuur", "Slaapkamer temperatuur", "°C", "temperature", "zha"),
+        C("sensor.tuin_buitentemperatuur", "Tuin buiten temperatuur", "°C", "temperature", "zha"),
+    ]
+
+
+def test_suggestions_find_the_right_sensor_for_each_role():
+    from engine.suggest import suggest
+    s = suggest(_cands(), pump_platform="localtuya")
+    assert s["retour"] == "sensor.warmtepomp_retour_temp" and s["aanvoer"] == "sensor.warmtepomp_aanvoer_temp"
+    assert s["frequentie"] == "sensor.warmtepomp_compressor_frequentie" and s["stroom"] == "sensor.warmtepomp_compressor_stroom"
+    assert s["spanning"] == "sensor.warmtepomp_spanning"                      # not the DC voltage
+    assert s["coil"] == "sensor.warmtepomp_pg_temp"
+    assert s["pomp_setpoint"] == "number.warmtepomp_setpoint"                 # not the defrost interval
+    assert s["pomp_schakelaar"] == "switch.warmtepomp_schakelaar"
+    assert s["vermogen"] == "sensor.wp_elektrisch_vermogen_w"                 # not the thermal power
+    assert s["vloer"] == "sensor.vloer_dekvloer_temperatuur"
+    assert sorted(s["debiet"]) == ["sensor.flowsensing_belimo_2_flow_rate_lph", "sensor.flowsensing_belimo_flow_rate_lph"]
+
+
+def test_suggestions_keep_the_pumps_own_outdoor_sensor_apart_from_the_controllers():
+    from engine.suggest import suggest
+    s = suggest(_cands(), pump_platform="localtuya")
+    assert s["buiten_unit"] == "sensor.warmtepomp_buiten_temp"                # the pump's own sensor -> the "unit" role
+    assert s["buiten"] == "sensor.tuin_buitentemperatuur"                     # the controller's own outdoor sensor is not the pump's
+    assert s["kamer"] == "sensor.woonkamer_temperatuur"
+
+
+def test_suggestions_without_a_chosen_integration_and_with_nothing_to_find():
+    from engine.suggest import suggest, Candidate
+    s = suggest(_cands())
+    assert s["retour"] == "sensor.warmtepomp_retour_temp"
+    assert suggest([]) == {} and suggest([Candidate("sensor.x", "Iets", "lux")]) == {}

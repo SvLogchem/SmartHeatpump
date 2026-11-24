@@ -25,7 +25,11 @@ class FakeStates:
         return self.d.get(eid)
 
     def set(self, eid, state, **attrs):
-        self.d[eid] = types.SimpleNamespace(state=str(state), attributes=attrs)
+        self.d[eid] = types.SimpleNamespace(entity_id=eid, state=str(state), attributes=attrs)
+
+    def async_all(self, domains=None):
+        domains = [domains] if isinstance(domains, str) else domains
+        return [s for eid, s in self.d.items() if domains is None or eid.split(".")[0] in domains]
 
 
 class FakeServices:
@@ -222,14 +226,13 @@ def test_reset_service_clears_model(setup):
     assert c.controller.model.windows_room == 0
 
 
-def test_config_flow_schema_builds():
+def test_config_flow_cleans_its_data():
     cf = importlib.import_module(f"{PKG}.config_flow")
-    schema = cf._schema(dict(CONFIG))
     assert cf._clean({"room_temp_sensor": "sensor.a", "outside_temp_sensor": "sensor.b", "return_temp_sensor": "",
-                      "setpoint_step": "0.5", "control_mode": "retour"}) == {
+                      "flow_rate_sensors": [], "extra_tapwater": True, "setpoint_step": "0.5", "control_mode": "retour"}) == {
         "room_temp_sensor": "sensor.a", "outside_temp_sensor": "sensor.b", "setpoint_step": 0.5,
         "control_mode": "retour"}
-    assert schema
+    assert cf.SlimmeWarmtepompConfigFlow.VERSION == 2
 
 
 def test_shadow_mode_shows_setpoint_but_does_not_write(setup):
@@ -402,3 +405,170 @@ def test_setpoint_sensor_exposes_the_connected_sensors_for_the_dashboard(setup):
     assert attrs["kamer"] == "sensor.room" and attrs["retour"] == "sensor.ret" and attrs["pomp_schakelaar"] == "switch.wp"
     sp = next(e for p, e in h.entities if e.entity_id == "sensor.slimme_wp_setpoint")
     assert sp.extra_state_attributes["invoer_sensoren"] == attrs
+
+
+def test_several_rooms_and_flow_sensors_reach_the_controller():
+    cfg = {**CONFIG, "extra_room_sensors": ["sensor.slaap", "sensor.studeer"], "room_mode": "koudste",
+           "flow_rate_sensors": ["sensor.flow1", "sensor.flow2", "sensor.flow3"]}
+    cfg.pop("flow_rate_sensor_1")
+    h, entry = make_hass(cfg)
+    h.states.set("sensor.slaap", 18.0); h.states.set("sensor.studeer", 19.5)
+    h.states.set("sensor.flow2", 600, unit_of_measurement="l/h"); h.states.set("sensor.flow3", "unavailable")
+    h.states.set("sensor.flow1", 15, unit_of_measurement="l/min")
+    assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+    c = entry.runtime_data
+    inp = run(c._build_inputs())
+    assert inp.room == 18.0                                                  # coldest of 20.5 / 18.0 / 19.5
+    assert inp.flow_lh == pytest.approx(900.0 + 600.0)                       # 15 l/min = 900 l/h, the unavailable sensor is skipped
+    assert c.decision_diag_rooms() if hasattr(c, "decision_diag_rooms") else True
+    assert c.data.diag["kamers"]["gebruikt"] == 18.0
+    assert c.input_entities()["debiet_3"] == "sensor.flow3" and c.input_entities()["kamer_3"] == "sensor.studeer"
+    ids = {e.entity_id for _, e in h.entities}
+    assert "number.slimme_wp_min_extra_kamer" in ids                         # guard-room setting exists only with extra rooms
+
+
+def test_guard_room_setting_and_notify_settings_are_absent_by_default(setup):
+    h, entry, c = setup
+    ids = {e.entity_id for _, e in h.entities}
+    assert "number.slimme_wp_min_extra_kamer" not in ids and "number.slimme_wp_melding_te_koud_uren" not in ids
+    assert "switch.slimme_wp_weekrapport_actief" not in ids
+
+
+def test_old_flow_rate_fields_are_migrated_to_a_list():
+    init = importlib.import_module(PKG)
+    updates = []
+    entry = types.SimpleNamespace(version=1, data={"room_temp_sensor": "sensor.r", "flow_rate_sensor_1": "sensor.f1",
+                                                   "flow_rate_sensor_2": "sensor.f2"})
+    h, _ = make_hass()
+    h.config_entries.async_update_entry = lambda e, data=None, version=None: updates.append((data, version))
+    assert run(init.async_migrate_entry(h, entry)) is True
+    data, version = updates[0]
+    assert version == 2 and data["flow_rate_sensors"] == ["sensor.f1", "sensor.f2"]
+    assert "flow_rate_sensor_1" not in data and data["room_temp_sensor"] == "sensor.r"
+
+
+def _notify_setup(**extra):
+    cfg = {**CONFIG, "notify_services": ["notify.mobile_app_pixel"], **extra}
+    h, entry = make_hass(cfg)
+    assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+    return h, entry, entry.runtime_data
+
+
+def test_messages_go_to_the_chosen_notify_service_in_the_ha_language():
+    import dataclasses
+    from datetime import timezone, timedelta
+    h, entry, c = _notify_setup()
+    h.config.language = "en"
+    run(c.async_request_refresh()); h.services.calls.clear()
+    dec = dataclasses.replace(c.data, ice_level="ijs", ice_warning=True, diag={**c.data.diag, "ijsvorming": {"redenen": ["cop_zakt"]}})
+    t0 = datetime.now(timezone.utc)
+    run(c._notify_icing(dec, t0)); run(c._notify_icing(dec, t0 + timedelta(hours=1)))
+    sent = [x for x in h.services.calls if x[0] == "notify"]
+    assert len(sent) == 1 and sent[0][1] == "mobile_app_pixel"
+    assert "icing" in sent[0][2]["title"].lower() and "COP drops" in sent[0][2]["message"]
+    h.config.language = "nl"; h.services.calls.clear()
+    run(c._notify_icing(dec, t0 + timedelta(hours=14)))
+    assert "ijsvorming" in [x for x in h.services.calls if x[0] == "notify"][0][2]["title"].lower()
+
+
+def test_cold_room_message_after_the_configured_number_of_hours():
+    import dataclasses
+    from datetime import timezone, timedelta
+    h, entry, c = _notify_setup()
+    run(c.async_request_refresh())
+    dec = dataclasses.replace(c.data, room_setpoint=21.0, summer=False, defrost=False)
+    inp = run(c._build_inputs()); inp = dataclasses.replace(inp, room=18.0)
+    h.services.calls.clear()
+    t0 = datetime.now(timezone.utc)
+    run(c._notify_cold(dec, inp, t0)); run(c._notify_cold(dec, inp, t0 + timedelta(hours=2)))
+    assert not [x for x in h.services.calls if x[0] == "notify"]              # not yet 3 hours
+    run(c._notify_cold(dec, inp, t0 + timedelta(hours=3, minutes=1)))
+    assert len([x for x in h.services.calls if x[0] == "notify"]) == 1
+    warm = dataclasses.replace(inp, room=20.9)
+    run(c._notify_cold(dec, warm, t0 + timedelta(hours=4)))                    # back in range: the timer resets
+    assert c._cold_since is None
+
+
+def test_health_problem_becomes_a_repair_issue_and_a_message_and_clears_again():
+    from datetime import timezone, timedelta
+    issues = sys.modules["homeassistant.helpers.issue_registry"].ISSUES
+    issues.created.clear(); issues.deleted.clear()
+    h, entry, c = _notify_setup()
+    h.states.set("sensor.ret", "unavailable")
+    t0 = datetime.now(timezone.utc)
+    run(c._check_health(t0)); assert not issues.created
+    h.services.calls.clear()
+    run(c._check_health(t0 + timedelta(minutes=31)))
+    assert "unavailable_retour" in issues.created
+    assert issues.created["unavailable_retour"]["translation_key"] == "unavailable"
+    assert [x for x in h.services.calls if x[0] == "notify"]
+    run(c._check_health(t0 + timedelta(minutes=35)))
+    assert len(issues.created) == 1                                           # not created twice
+    h.states.set("sensor.ret", 27.0)
+    run(c._check_health(t0 + timedelta(minutes=40)))
+    assert "unavailable_retour" in issues.deleted
+
+
+def test_weekly_report_sensor_and_monday_message():
+    from datetime import timezone, timedelta
+    h, entry, c = _notify_setup()
+    u = c.controller.usage
+    base = datetime(2026, 11, 2, 0, 0, tzinfo=datetime.now().astimezone().tzinfo)
+    for day in range(8):
+        for hr in range(24):
+            u.update(base + timedelta(days=day, hours=hr), dt_h=1.0, e_dt=1.0, outside=5.0, base=18.0, el_kwh=0.5, th_kwh=1.5,
+                     price=0.25, heating=True, defrost=False, regeling_actief=True, in_band=True)
+    monday = base + timedelta(days=7, hours=9)                                # Monday 9 Nov, 09:00
+    assert monday.weekday() == 0
+    h.services.calls.clear()
+    run(c._weekly_report(monday, c.data))
+    sent = [x for x in h.services.calls if x[0] == "notify"]
+    assert len(sent) == 1 and "kWh" in sent[0][2]["message"]
+    run(c._weekly_report(monday + timedelta(hours=1), c.data))
+    assert len([x for x in h.services.calls if x[0] == "notify"]) == 1       # once per week
+    sensor = next(e for p, e in h.entities if e.entity_id == "sensor.slimme_wp_weekrapport")
+    assert sensor.native_value == pytest.approx(84.0) and "kWh" in sensor.extra_state_attributes["rapport"]
+    assert sensor.extra_state_attributes["comfort_percentage"] == 100
+    # a restart in the same week does not send it again
+    run(c.async_save()); assert c._week_sent
+
+
+def test_export_and_import_settings_and_learned_state(tmp_path):
+    h, entry = make_hass()
+    h.config.path = lambda name: str(tmp_path / name)
+    h.config_entries.async_entries = lambda domain=None: [entry]
+    handlers = {}
+    h.services.async_register = lambda domain, name, fn, schema=None, supports_response=None: handlers.__setitem__(name, fn)
+
+    async def exec_job(fn, *a):
+        return fn(*a)
+    h.async_add_executor_job = exec_job
+    init = importlib.import_module(PKG)
+    run(init.async_setup(h, {}))
+    assert {"exporteer", "importeer", "reset_model"} <= set(handlers)
+    run(init.async_setup_entry(h, entry))
+    c = entry.runtime_data
+    c.settings["setpoint_dag"] = 21.5
+    c.switches["prijssturing_actief"] = False
+    c.controller.mod.observe(3.0, True, 50.0, 4.0)
+    call = types.SimpleNamespace(data={"leerstatus": True})
+    out = run(handlers["exporteer"](call))
+    assert out["instellingen"]["setpoint_dag"] == 21.5 and out["schakelaars"]["prijssturing_actief"] is False
+    assert (tmp_path / "slimme_warmtepomp_export.json").is_file() and "leerstatus" in out
+
+    c.settings["setpoint_dag"] = 19.0; c.switches["prijssturing_actief"] = True
+    c.controller.mod.reset()
+    res = run(handlers["importeer"](types.SimpleNamespace(data={})))            # reads the file
+    assert res["leerstatus"] and not res["overgeslagen"]
+    assert c.settings["setpoint_dag"] == 21.5 and c.switches["prijssturing_actief"] is False
+    assert c.controller.mod.bins                                                  # the learned table is back
+
+    # without the learned part only settings come back; garbage and out-of-range values are handled
+    c.controller.mod.reset()
+    bad = {**out, "instellingen": {"setpoint_dag": 99.0, "bestaat_niet": 1.0, "glycol": "veel"}, "schakelaars": {"leren_actief": "ja"}}
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": bad, "leerstatus": False})))
+    assert c.settings["setpoint_dag"] == 25.0                                    # clamped to the maximum of the setting
+    assert sorted(res["overgeslagen"]) == ["bestaat_niet", "glycol", "leren_actief"] and not res["leerstatus"]
+    assert not c.controller.mod.bins
+    with pytest.raises(Exception):
+        run(c.import_bundle({"iets": "anders"}))

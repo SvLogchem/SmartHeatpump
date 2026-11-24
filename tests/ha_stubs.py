@@ -115,7 +115,8 @@ def install():
         as_local=lambda d: d.astimezone(TZ),
         parse_datetime=_pdt, parse_time=_pt)
     mod("homeassistant.exceptions", HomeAssistantError=HomeAssistantError)
-    mod("homeassistant.core", State=Dummy, HomeAssistant=Dummy, ServiceCall=Dummy, callback=lambda f: f)
+    mod("homeassistant.core", State=Dummy, HomeAssistant=Dummy, ServiceCall=Dummy, callback=lambda f: f,
+        SupportsResponse=StrEnum("SupportsResponse", {"ONLY": "only", "OPTIONAL": "optional", "NONE": "none"}))
     mod("homeassistant.config_entries", ConfigEntry=Dummy, ConfigFlow=Dummy, ConfigFlowResult=dict)
     mod("homeassistant.helpers.storage", Store=Store)
     mod("homeassistant.helpers.update_coordinator", DataUpdateCoordinator=DataUpdateCoordinator,
@@ -125,6 +126,10 @@ def install():
     class FakeRegistry:
         def __init__(self):
             self.existing, self.removed = {}, []
+            self.entities = {}                      # entity_id -> namespace(platform=...), for the setup wizard
+
+        def async_get(self, entity_id):
+            return self.entities.get(entity_id)
 
         def async_get_entity_id(self, domain, platform, unique_id):
             return self.existing.get((domain, platform, unique_id))
@@ -134,6 +139,11 @@ def install():
 
     registry = FakeRegistry()
     mod("homeassistant.helpers.entity_registry", async_get=lambda hass: registry, REGISTRY=registry)
+    issues = types.SimpleNamespace(created={}, deleted=[])
+    mod("homeassistant.helpers.issue_registry",
+        async_create_issue=lambda hass, domain, issue_id, **kw: issues.created.__setitem__(issue_id, kw),
+        async_delete_issue=lambda hass, domain, issue_id: issues.deleted.append(issue_id),
+        IssueSeverity=StrEnum("IssueSeverity", {"WARNING": "warning", "ERROR": "error"}), ISSUES=issues)
     mod("homeassistant.helpers.selector", SelectSelectorMode=StrEnum("SSM", {"DROPDOWN": "dropdown"}))
     ha.helpers.entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
     ha.helpers.selector = sys.modules["homeassistant.helpers.selector"]
@@ -167,6 +177,8 @@ def install():
             class Marker:
                 def __init__(self, key, **kw):
                     self.key = key
+                    self.kw = kw
+                    self.description = kw.get("description")
                 def __hash__(self):
                     return hash(self.key)
                 def __eq__(self, o):

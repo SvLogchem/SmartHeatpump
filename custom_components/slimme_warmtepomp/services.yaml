@@ -12,3 +12,31 @@ reset_model:
           max: 100
           step: 10
           unit_of_measurement: "%"
+
+exporteer:
+  name: Exporteer instellingen en geleerde gegevens
+  description: Schrijft alle instellingen, schakelaars en (optioneel) het geleerde model naar het bestand slimme_warmtepomp_export.json in je configuratiemap en geeft ze ook als antwoord terug.
+  fields:
+    leerstatus:
+      name: Ook het geleerde model
+      description: Neem het geleerde huis- en vloermodel, de frequentietabel en de stooklijn mee.
+      default: true
+      selector:
+        boolean:
+
+importeer:
+  name: Importeer instellingen en geleerde gegevens
+  description: Leest slimme_warmtepomp_export.json uit je configuratiemap (of de meegegeven gegevens) en past ze toe. Waarden worden binnen de toegestane grenzen gehouden.
+  fields:
+    leerstatus:
+      name: Ook het geleerde model
+      description: Zet ook het geleerde model terug. Uit = alleen instellingen en schakelaars.
+      default: true
+      selector:
+        boolean:
+    data:
+      name: Gegevens
+      description: Optioneel. De inhoud van een export; zonder wordt het bestand gebruikt.
+      required: false
+      selector:
+        object:
