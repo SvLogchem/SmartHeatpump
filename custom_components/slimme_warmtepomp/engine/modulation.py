@@ -29,6 +29,12 @@ class ModulationLearner:
     def reset(self) -> None:
         self.bins = {}
 
+    def shrink(self, keep: float) -> None:
+        """Forget part of the evidence: bins fall back below the trust threshold and are relearned."""
+        for b in self.bins.values():
+            b[0] = min(b[0], MIN_N * 3.0) * keep
+        self.bins = {k: v for k, v in self.bins.items() if v[0] >= 1.0}
+
     def observe(self, delta: float, running: bool, freq: float | None, kw: float | None) -> None:
         b = self.bins.setdefault(_bin(delta), [0.0, 1.0 if running else 0.0, freq or 0.0, kw or 0.0])
         b[0] += 1.0
@@ -58,8 +64,13 @@ class ModulationLearner:
 
     def trusted(self) -> list[tuple[float, float, float]]:
         """(gap K, mean frequency Hz, mean thermal kW) of every trusted bin where the compressor ran."""
-        return sorted((k * BIN, v[2], v[3]) for k, v in self.bins.items()
+        rows = sorted((k * BIN, v[2], v[3]) for k, v in self.bins.items()
                       if v[0] >= MIN_N and v[1] >= 0.5 and v[2] > 0)
+        out, top = [], 0.0
+        for g, f, kw in rows:        # the pump never runs slower at a larger gap: smooth out stale or polluted bins
+            top = max(top, f)
+            out.append((g, top, kw))
+        return out
 
     def gap_cap(self, f_max: float, margin: float = 0.25) -> float | None:
         """Largest gap that keeps the compressor at or below ``f_max`` Hz.

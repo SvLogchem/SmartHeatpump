@@ -418,8 +418,8 @@ def test_frequency_limit_caps_boost_in_quiet_hours_but_not_by_day_or_in_emergenc
     d = c.step(_inp(day, **kw))
     assert d.setpoint_raw <= 29.0                            # by day the efficient frequency (50 Hz) is the limit
     c = SmartController(); _fill(c)
-    d = c.step(_inp(day, **dict(kw, room=19.6)))
-    assert not d.freq_limited                                # below the comfort band: the full range (80 Hz) is allowed
+    d = c.step(_inp(day, **dict(kw, room=18.9)))
+    assert not d.freq_limited                                # clearly below the comfort band: the full range (80 Hz) is allowed
     c = SmartController(); _fill(c)
     d = c.step(_inp(quiet, **dict(kw, room=15.5)))
     assert not d.freq_limited                                # emergency: comfort first
@@ -1028,3 +1028,31 @@ def test_planner_may_not_coast_while_room_is_below_comfort_band():
     for i in range(12):
         d = c.step(_inp(t + timedelta(minutes=10 * i), room=19.6, ret=22.0, outside=9.0, switch_state="on"))
     assert d.reason != "uitlopen"
+
+
+def test_frequency_table_is_monotonic_and_relearn_shrinks_it():
+    from engine.modulation import ModulationLearner
+    m = ModulationLearner()
+    for _ in range(12):
+        m.observe(2.0, True, 54.0, 3.0); m.observe(3.5, True, 50.0, 3.5); m.observe(8.0, True, 70.0, 6.0)
+    freqs = [f for _, f, _ in m.trusted()]
+    assert freqs == sorted(freqs)               # a larger gap never shows a lower frequency
+    m.shrink(0.5)
+    assert m.table() == {} or all(v > 0 for v in m.table().values())
+    m.shrink(0.0)
+    assert m.table() == {}
+
+
+def test_floor_table_is_published_per_outdoor_temperature():
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(_t(0), room=21.0))
+    t = d.diag.get("vloer_setpoint_tabel")
+    assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"])
+
+
+def test_warm_floor_keeps_the_frequency_limit_even_when_room_is_far_below_band():
+    c = SmartController(); _fill(c)
+    c._floor_gap, c._tr_rate = 0.4, 0.05          # floor at the needed level, room not getting colder
+    day = datetime(2026, 11, 12, 14, 0, tzinfo=TZ)
+    d = c.step(_inp(day, room=18.9, ret=24.0, flow=28.0, freq=70.0, target_current=29.0, floor=24.5))
+    assert d.setpoint_raw <= 24.0 + 3.0

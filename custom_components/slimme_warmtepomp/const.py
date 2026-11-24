@@ -1,6 +1,6 @@
 """Constants for the Slimme Warmtepomp integration."""
 DOMAIN = "slimme_warmtepomp"
-VERSION = "2.12.3"
+VERSION = "2.13.2"
 
 CONF_ROOM = "room_temp_sensor"
 CONF_OUTSIDE = "outside_temp_sensor"
