@@ -197,3 +197,6 @@ De frequentielimiet (efficiënte boost-frequentie, standaard 50 Hz) wordt pas op
 
 ### Warme vloer: niet harder duwen (v2.13.2)
 Is de gemeten vloer (bijna) op het niveau dat het model nodig heeft (tekort ≤ 1 K) en wordt de kamer niet kouder, dan blijft de frequentielimiet ook gelden als de kamer ver onder de band zit. De warmte van de vloer naar de kamer kost uren; harder stoken geeft later alleen overshoot. Onder de minimale kamertemperatuur vervalt de limiet altijd.
+
+### Vloer niet te ver laten afkoelen (v2.13.3)
+Is de kamer te warm omdat de vloer nog warmte afgeeft, dan liep de pomp eerder helemaal uit ("te warm"). De vloer koelde dan ver onder wat de kamer nodig heeft, en daarna moest hij hard opladen terwijl de kamer onder het setpoint zakte. Nu blijft de pomp zacht (minimale frequentie) doordraaien zolang de gemeten vloer meer dan 0,5 K onder het modelniveau zit en de kamer niet meer dan 1 K boven de bovengrens ligt. Zichtbaar als attribuut `vloer_aanhouden`.

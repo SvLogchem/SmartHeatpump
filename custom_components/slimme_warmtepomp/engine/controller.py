@@ -220,6 +220,7 @@ class SmartController:
         self._win: list = []
         self._tr_win: list = []
         self._lw: list = []
+        self._floor_hold = False
         self._tr_rate = 0.0
         self._e_ema = 0.0
         self._floor_gap: float | None = None
@@ -756,7 +757,18 @@ class SmartController:
         # for hours against a setpoint of 20.0, because the model thought the floor was warm enough) keeps heating
         below_band = tr < sp_now - s["tolerantie_laag"]
         plan_coast = pl.coast_now and not below_band
-        want_coast = (self.summer or over or cap_coast or plan_coast or window_active or grid_block) and not emergency
+        # A room that is warm because the slab still gives off heat must not make the floor cool far below what the
+        # room needs: the pump would then have to recharge it hard (and the room undershoots). While the floor is
+        # clearly below its equilibrium the pump keeps running softly (minimum frequency) instead of coasting.
+        floor_hold = False
+        if (over and use_learned and f_known and inp.floor is not None and self.f_est is not None
+                and not (self.summer or window_active or grid_block)
+                and tr <= sp_now + s["tolerantie_hoog"] + 1.0):
+            eq_now = self.model.floor_equilibrium(sp_now, to_now, sun_now) + self.trim_at(to_now)
+            floor_hold = eq_now - self.f_est > 0.5
+        self._floor_hold = floor_hold
+        want_coast = ((self.summer or (over and not floor_hold) or cap_coast or plan_coast or window_active or grid_block)
+                      and not emergency)
         if boost is not None:       # a persistent shortfall beats price and planned coasting (never summer/window/grid)
             want_coast = bool(self.summer or window_active or grid_block)
         want = "coast" if want_coast else "run"
@@ -985,7 +997,7 @@ class SmartController:
             "avond_laatste_afwijking": _r(self.tracker.last_error),
             "vloer_geschat": _r(self.f_est),
             "vloer_bron": self._floor_src,
-            "tekort_boost": self._boost or "uit", "stooklijn_correctie": round(self.trim_at(self._to_now), 2) if self._to_now is not None else None, "vloer_tekort": _r(self._floor_gap), "vloer_gemeten": _r(self._f_meas),
+            "tekort_boost": self._boost or "uit", "vloer_aanhouden": self._floor_hold, "stooklijn_correctie": round(self.trim_at(self._to_now), 2) if self._to_now is not None else None, "vloer_tekort": _r(self._floor_gap), "vloer_gemeten": _r(self._f_meas),
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),
