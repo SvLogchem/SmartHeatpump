@@ -115,7 +115,7 @@ def install():
         as_local=lambda d: d.astimezone(TZ),
         parse_datetime=_pdt, parse_time=_pt)
     mod("homeassistant.exceptions", HomeAssistantError=HomeAssistantError)
-    mod("homeassistant.core", State=Dummy, HomeAssistant=Dummy, ServiceCall=Dummy)
+    mod("homeassistant.core", State=Dummy, HomeAssistant=Dummy, ServiceCall=Dummy, callback=lambda f: f)
     mod("homeassistant.config_entries", ConfigEntry=Dummy, ConfigFlow=Dummy, ConfigFlowResult=dict)
     mod("homeassistant.helpers.storage", Store=Store)
     mod("homeassistant.helpers.update_coordinator", DataUpdateCoordinator=DataUpdateCoordinator,

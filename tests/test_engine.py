@@ -1111,3 +1111,40 @@ def test_plan_values_stay_visible_during_a_defrost_cycle():
     d = c.step(_inp(_t(14), room=20.5, floor=22.0, ret=29.0, freq=40.0, flow=24.0, switch_state="on"))   # flow < return
     assert d.defrost and d.reason == "ontdooien"
     assert d.diag["plan"] == c._plan_diag["plan"] and d.diag["verwacht_buiten"] == c._plan_diag["verwacht_buiten"]
+
+
+def test_frost_protection_still_works_when_the_room_sensor_is_missing():
+    c = SmartController()
+    d = c.step(_inp(_t(0), room=None, outside=-4.0, ret=6.0, switch_state="off", hvac_on=False))
+    assert d.sensor_problem and d.frost and d.switch == "on" and d.frost_forced
+
+
+def test_thermostat_off_without_power_switch_drops_the_setpoint_to_the_minimum():
+    c = SmartController()
+    d = c.step(_inp(_t(0), room=20.0, outside=8.0, switch_state=None, hvac_on=False, target_current=33.0))
+    assert d.reason == "uit" and d.setpoint == DEFAULTS["min_setpoint"]
+
+
+def test_one_damaged_stored_part_does_not_wipe_the_house_model():
+    src = SmartController()
+    for m in range(30):
+        src.step(_inp(_t(m * 2), room=20.0, floor=22.0, ret=24.0, freq=40.0, flow=30.0))
+    state = src.export_state()
+    k0 = state["model"]["params"]["k"] if "params" in state["model"] else None
+    state["usage"] = "kapot"
+    dst = SmartController(); dst.import_state(state)
+    assert dst.model.to_dict() == src.model.to_dict()
+
+
+def test_dhw_run_survives_a_restart_and_is_still_ended_by_max_run_time():
+    from engine.dhw import DhwController
+    a = DhwController(); t = _t(0)
+    a._start(t, "normal", 50.0, "onder_minimum")
+    b = DhwController(); b.from_dict(a.to_dict())
+    assert b.active and b.started == t
+
+
+def test_shadow_mode_does_not_report_a_frost_switch_on():
+    c = SmartController()
+    d = c.step(_inp(_t(0), room=20.0, outside=-6.0, ret=6.0, switch_state="off", hvac_on=False, regeling_actief=False))
+    assert not d.frost_forced and d.switch is None

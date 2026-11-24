@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -100,6 +100,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         except ValueError:
             return None
 
+    @callback
     def on_coil_event(self, event) -> None:
         """Remember every change of the coil sensor between two control cycles (event driven, ~1 s resolution)."""
         data = getattr(event, "data", None) or {}

@@ -223,6 +223,7 @@ class SmartController:
         self._lw: list = []
         self._last_heating = False
         self._plan_diag: dict = {}
+        self._run_min = 0.0
         self._floor_hold = False
         self._tr_rate = 0.0
         self._e_ema = 0.0
@@ -299,31 +300,42 @@ class SmartController:
     def import_state(self, d: dict) -> None:
         if not d:
             return
+        # each part is restored on its own: one damaged part must not wipe the learned house model (or the rest)
+        def part(fn) -> None:
+            try:
+                fn()
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+
         try:
             self.model.from_dict(d.get("model", {}))
-            self.tracker.from_dict(d.get("tracker", {}))
-            self.prices.from_dict(d.get("prices", {}))
-            self.dhw.from_dict(d.get("dhw", {}))
-            self.mod.from_dict(d.get("mod", {}))
-            self.defl.from_dict(d.get("defl", {}))
-            self.ice.from_dict(d.get("ice", {}))
-            self.coil.from_dict(d.get("coil", {}))
-            self.usage.from_dict(d.get("usage", {}))
-            self.pi_i = float(d.get("pi_i", 0.0))
-            self.trim = {int(k): _clamp(float(v), TRIM_MIN, TRIM_MAX) for k, v in (d.get("trim") or {}).items()}
-            self.summer_mean = d.get("summer_mean")
-            self.summer = bool(d.get("summer", False))
-            self.dT_sup = float(d.get("dT_sup", 3.5))
-            self.energy_th = float(d.get("energy_th", 0.0))
-            self.energy_el = float(d.get("energy_el", 0.0))
-            self.day_key = d.get("day_key")
+        except (TypeError, ValueError, AttributeError, KeyError):
+            self.model.reset()          # a corrupted model starts fresh
+        part(lambda: self.tracker.from_dict(d.get("tracker", {})))
+        part(lambda: self.prices.from_dict(d.get("prices", {})))
+        part(lambda: self.dhw.from_dict(d.get("dhw", {})))
+        part(lambda: self.mod.from_dict(d.get("mod", {})))
+        part(lambda: self.defl.from_dict(d.get("defl", {})))
+        part(lambda: self.ice.from_dict(d.get("ice", {})))
+        part(lambda: self.coil.from_dict(d.get("coil", {})))
+        part(lambda: self.usage.from_dict(d.get("usage", {})))
+        part(lambda: setattr(self, "pi_i", float(d.get("pi_i", 0.0))))
+        part(lambda: setattr(self, "trim", {int(k): _clamp(float(v), TRIM_MIN, TRIM_MAX)
+                                            for k, v in (d.get("trim") or {}).items()}))
+        part(lambda: setattr(self, "summer_mean", d.get("summer_mean")))
+        part(lambda: setattr(self, "summer", bool(d.get("summer", False))))
+        part(lambda: setattr(self, "dT_sup", float(d.get("dT_sup", 3.5))))
+        part(lambda: setattr(self, "energy_th", float(d.get("energy_th", 0.0))))
+        part(lambda: setattr(self, "energy_el", float(d.get("energy_el", 0.0))))
+        part(lambda: setattr(self, "day_key", d.get("day_key")))
+
+        def counters() -> None:
             t = d.get("today") or {}
             self.today = {"th": float(t.get("th", 0.0)), "el": float(t.get("el", 0.0)), "starts": int(t.get("starts", 0))}
             y = d.get("yesterday")
             self.yesterday = None if not y else {"th": float(y["th"]), "el": float(y["el"]), "starts": int(y["starts"])}
-        except (TypeError, ValueError, AttributeError, KeyError):
-            # corrupted storage must never stop the integration from starting
-            self.model.reset()
+
+        part(counters)
 
     # ----------------------------------------------------------- helpers
     @staticmethod
@@ -414,6 +426,14 @@ class SmartController:
             d.sensor_problem = True
             d.reason = "sensor_ontbreekt"
             d.room_setpoint = self._last.room_setpoint if self._last else s["setpoint_dag"]
+            # frost protection must not depend on the room sensor: the outdoor sensor or the return water is enough
+            self._frost_check(inp, s, now, d)
+            if d.frost:
+                d.reason = "vorstbeveiliging"
+                d.setpoint = float(round(s["min_setpoint"]))
+                if inp.switch_state == "off":
+                    d.switch, d.frost_forced = "on", True
+            self._finish(d, now)
             return d
 
         self._frost_check(inp, s, now, d)
@@ -468,7 +488,13 @@ class SmartController:
                                                        and inp.flow - inp.ret < -0.5)))
         # water temperatures are unreliable during and shortly after a defrost: no COP, no learning
         dtw_now = (inp.flow - inp.ret) if inp.flow is not None and inp.ret is not None else None
+        started_before = self.defl.last_start
         self.defl.update(now, d.defrost, dtw_now, heating, inp.unit_outside)
+        # compressor running minutes since the last defrost started: a long standstill must not look like "late"
+        if self.defl.last_start != started_before:
+            self._run_min = 0.0
+        elif heating and not d.defrost:
+            self._run_min += dt_h * 60.0
         if d.defrost:
             self._defrost_until = now + timedelta(minutes=self.defl.wait_minutes(s["ontdooi_wachttijd"]))
         settling = d.defrost or (self._defrost_until is not None and now < self._defrost_until)
@@ -493,7 +519,7 @@ class SmartController:
                         unit_diff=unit_diff, outside=inp.outside, freq_running=heating,
                         last_end=self.defl.last_end, last_interval=self.defl.last_interval,
                         mean_interval=self.defl.interval, n_defrosts=self.defl.n,
-                        since_last_min=self.defl.minutes_since_last(now),
+                        since_last_min=self._run_min if self.defl.last_start is not None else None,
                         coil_weak_streak=self.coil.weak_streak, coil_cold=self.coil.cold)
         d.ice_level, d.ice_warning = self.ice.level, self.ice.level == "ijs"
         d.next_defrost_min = self.defl.minutes_until_next(now)
@@ -629,6 +655,8 @@ class SmartController:
                 d.setpoint = float(round(s["min_setpoint"]))
             elif inp.regeling_actief and inp.switch_state == "on":
                 d.switch = "off"
+            elif inp.regeling_actief and inp.switch_state is None:
+                d.setpoint = float(round(s["min_setpoint"]))      # no power switch configured: idle at the minimum
             self._finish(d, now)
             return d
         if dhw.active:
@@ -984,9 +1012,9 @@ class SmartController:
             self._frost_water = False
             self.frost_reason = None
             return
-        if inp.outside < s["vorst_buiten"]:
+        if inp.outside is not None and inp.outside < s["vorst_buiten"]:
             self._frost_cold, self._frost_safe_since = True, None
-        elif self._frost_cold:
+        elif self._frost_cold and inp.outside is not None:
             self._frost_safe_since = self._frost_safe_since or now
             if now - self._frost_safe_since >= timedelta(minutes=15):
                 self._frost_cold, self._frost_safe_since = False, None
@@ -1130,6 +1158,7 @@ class SmartController:
                 d.diag.setdefault(k, v)
         if d.shadow:  # "schaduwmodus": everything is calculated and visible, nothing is sent
             d.switch = None
+            d.frost_forced = False
             d.dhw_request = None
         self._last = d
 
