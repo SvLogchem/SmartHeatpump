@@ -138,7 +138,7 @@ def install():
     ha.helpers.entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
     ha.helpers.selector = sys.modules["homeassistant.helpers.selector"]
     consts = dict(
-        ATTR_TEMPERATURE="temperature", PERCENTAGE="%", EVENT_HOMEASSISTANT_STOP="homeassistant_stop",
+        ATTR_TEMPERATURE="temperature", PERCENTAGE="%", EVENT_HOMEASSISTANT_STOP="homeassistant_stop", EVENT_STATE_CHANGED="state_changed",
         EntityCategory=StrEnum("EntityCategory", {"CONFIG": "config", "DIAGNOSTIC": "diagnostic"}),
         UnitOfTemperature=StrEnum("UnitOfTemperature", {"CELSIUS": "°C"}),
         UnitOfPower=StrEnum("UnitOfPower", {"WATT": "W", "KILO_WATT": "kW"}),

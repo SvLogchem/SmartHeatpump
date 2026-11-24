@@ -49,6 +49,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self._forecast_at: datetime | None = None
         self._saved_at: datetime | None = None
         self._saved_defrosts = 0.0
+        self._coil_samples: list = []
 
     # ------------------------------------------------------------------ config
     @property
@@ -98,6 +99,25 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             return float(st.state)
         except ValueError:
             return None
+
+    def on_coil_event(self, event) -> None:
+        """Remember every change of the coil sensor between two control cycles (event driven, ~1 s resolution)."""
+        data = getattr(event, "data", None) or {}
+        coil = self.cfg.get(CONF_COIL)
+        if not coil or data.get("entity_id") != coil:
+            return
+        st = data.get("new_state")
+        if st is None or str(st.state).lower() in _BAD:
+            return
+        try:
+            self._coil_samples.append((dt_util.now(), float(st.state)))
+        except ValueError:
+            return
+        del self._coil_samples[:-600]
+
+    def _take_coil_samples(self) -> tuple:
+        out, self._coil_samples = tuple(self._coil_samples), []
+        return out
 
     def _flow_lh(self, entity_id: str | None) -> float | None:
         val = self._num(entity_id)
@@ -216,7 +236,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             now=now,
             room=self._num(cfg.get(CONF_ROOM)), outside=outside,
             unit_outside=self._num(cfg.get(CONF_UNIT_OUTSIDE)),
-            coil_temp=self._num(cfg.get(CONF_COIL)),
+            coil_temp=self._num(cfg.get(CONF_COIL)), coil_samples=self._take_coil_samples(),
             flow=self._num(cfg.get(CONF_FLOW)), ret=self._num(cfg.get(CONF_RETURN)),
             floor=self._num(cfg.get(CONF_FLOOR)), freq=self._num(cfg.get(CONF_FREQ)),
             power_w=power, flow_lh=flow_lh, tank=self._num(cfg.get(CONF_DHW_TEMP)),
