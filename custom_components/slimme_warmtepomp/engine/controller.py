@@ -725,6 +725,16 @@ class SmartController:
             "start_voorverwarmen": pl.start.isoformat() if pl.start else None,
         })
 
+        # expected setpoint for the coming hours, from the weather forecast and the sun (what the plan builds on)
+        if use_learned and f_known:
+            fut = []
+            for hh in (0, 2, 4, 6, 8, 10, 12):
+                tt = now + timedelta(hours=hh)
+                to_f, sun_f, sp_f = to_fn(tt), sun_fn(tt), sp_at(tt)
+                fut.append({"tijd": tt.strftime("%H:%M"), "buiten": round(to_f, 1), "kamerdoel": round(sp_f, 1),
+                            "vloer": round(self.model.floor_equilibrium(sp_f, to_f, sun_f) + self.trim_at(to_f), 1),
+                            "setpoint": round(s_base(tt, to_f, sun_f, sp_f), 1)})
+            d.diag["verwacht_setpoint"] = fut
         # ---- decide run / coast (with minimum run and standstill times)
         in_quiet = quiet_fn(now)
         start_kick = heat_floor = False

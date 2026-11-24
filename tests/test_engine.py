@@ -1069,3 +1069,11 @@ def test_cold_floor_keeps_pump_running_softly_while_room_is_warm_from_the_slab()
     for m in range(40):
         d = warm.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=30.0, **base))
     assert not warm._floor_hold and d.coasting
+
+
+def test_expected_setpoint_table_covers_the_coming_hours():
+    c = SmartController()
+    for m in range(5):
+        d = c.step(_inp(_t(m), room=20.5, floor=22.0, ret=24.0, freq=0.0))
+    f = d.diag.get("verwacht_setpoint")
+    assert f is None or (len(f) == 7 and all(r["setpoint"] >= DEFAULTS["min_setpoint"] for r in f))

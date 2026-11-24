@@ -203,3 +203,6 @@ Is de kamer te warm omdat de vloer nog warmte afgeeft, dan liep de pomp eerder h
 
 ### Tabel buiten / kamer / vloer / setpoint (v2.13.4)
 Het attribuut `vloer_setpoint_tabel` toont per buitentemperatuur drie kamerdoelen (dagsetpoint −0,4 / ±0 / +0,6 K): de vloertemperatuur die de kamer daarop houdt en het bijbehorende setpoint naar de warmtepomp.
+
+### Verwacht setpoint komende uren (v2.14.0)
+Attribuut `verwacht_setpoint` (sensor Setpoint): voor nu en elke 2 uur tot 12 uur vooruit het kamerdoel, de benodigde vloertemperatuur en het basissetpoint, berekend met de weersvoorspelling en de zon en inclusief de geleerde stooklijn-correctie. Voorverwarmen en uitlopen van de planner komen daar nog bovenop.
