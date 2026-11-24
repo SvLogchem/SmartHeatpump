@@ -1056,3 +1056,15 @@ def test_warm_floor_keeps_the_frequency_limit_even_when_room_is_far_below_band()
     day = datetime(2026, 11, 12, 14, 0, tzinfo=TZ)
     d = c.step(_inp(day, room=18.9, ret=24.0, flow=28.0, freq=70.0, target_current=29.0, floor=24.5))
     assert d.setpoint_raw <= 24.0 + 3.0
+
+
+def test_cold_floor_keeps_pump_running_softly_while_room_is_warm_from_the_slab():
+    base = dict(outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4}, room=21.0)
+    cold = SmartController()                         # room 21.0 (over), but the floor already cooled far below need
+    for m in range(40):
+        d = cold.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=19.0, **base))
+    assert cold._floor_hold and not d.coasting
+    warm = SmartController()                         # floor still warm: coasting as before
+    for m in range(40):
+        d = warm.step(_inp(_t(m), switch_state="on", target_current=23.0, floor=30.0, **base))
+    assert not warm._floor_hold and d.coasting
