@@ -287,6 +287,10 @@ Alle bestaande entiteiten behouden hun id en unique id, instellingen blijven bew
 - De prijsvoorspelling wordt herkend aan de vorm van de attributen; controleer in de attributen van *Berekend Setpoint* of er een voorspelling wordt gebruikt.
 - Getest met een gesimuleerd huis (zie `tests/`) en met een nagebootste Home Assistant-omgeving; nog niet in een echte installatie.
 
+## Licentie
+
+MIT, zie [LICENSE](LICENSE).
+
 ## Tests
 
 ```

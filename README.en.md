@@ -155,6 +155,10 @@ Tabs: **Overview** (status, switches, what the control is doing, rooms, performa
 - Price forecasts are recognised from the shape of the attributes; check the attributes of *Calculated Setpoint* to see whether a forecast is used.
 - Tested with a simulated house and a simulated Home Assistant environment (see `tests/`); the setup wizard, repairs and dashboard have not been run in a real installation yet. Please report anything odd.
 
+## License
+
+MIT, see [LICENSE](LICENSE).
+
 ## Tests
 
 ```
