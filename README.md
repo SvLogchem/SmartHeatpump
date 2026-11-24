@@ -194,3 +194,6 @@ Tijdens "tekort aanhouden" stopt de pomp met extra warmte zodra de gemeten vloer
 
 ### Frequentielimiet blijft bij klein tekort (v2.13.1)
 De frequentielimiet (efficiënte boost-frequentie, standaard 50 Hz) wordt pas opgeheven als de kamer meer dan 0,8 K onder de comfortband zit (of onder de minimale kamertemperatuur). Een tekort van enkele tienden graad liep eerder door tot 70 Hz.
+
+### Warme vloer: niet harder duwen (v2.13.2)
+Is de gemeten vloer (bijna) op het niveau dat het model nodig heeft (tekort ≤ 1 K) en wordt de kamer niet kouder, dan blijft de frequentielimiet ook gelden als de kamer ver onder de band zit. De warmte van de vloer naar de kamer kost uren; harder stoken geeft later alleen overshoot. Onder de minimale kamertemperatuur vervalt de limiet altijd.

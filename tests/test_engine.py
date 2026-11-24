@@ -1048,3 +1048,11 @@ def test_floor_table_is_published_per_outdoor_temperature():
     d = c.step(_inp(_t(0), room=21.0))
     t = d.diag.get("vloer_setpoint_tabel")
     assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"])
+
+
+def test_warm_floor_keeps_the_frequency_limit_even_when_room_is_far_below_band():
+    c = SmartController(); _fill(c)
+    c._floor_gap, c._tr_rate = 0.4, 0.05          # floor at the needed level, room not getting colder
+    day = datetime(2026, 11, 12, 14, 0, tzinfo=TZ)
+    d = c.step(_inp(day, room=18.9, ret=24.0, flow=28.0, freq=70.0, target_current=29.0, floor=24.5))
+    assert d.setpoint_raw <= 24.0 + 3.0

@@ -678,12 +678,18 @@ class SmartController:
             bedtime += timedelta(days=1)
 
         # ---- frequency limit: translate max Hz (day / quiet hours) into a max gap above the return temp
+        def floor_warm_enough():
+            # the measured floor is (almost) at the level the model needs and the room is not getting colder: the
+            # heat is on its way (slab to room takes hours), pushing harder only overshoots later
+            return (self._floor_gap is not None and self._floor_gap <= 1.0 and self._tr_rate >= 0.0
+                    and tr >= s["min_kamertemp"])
+
         def fmax_fn(t):
             fmax = s["max_freq_stil"] if quiet_fn(t) else s["max_freq_dag"]
             # Normal running stays at the efficient boost frequency: a setpoint far above what the pump can reach
             # (history: 38-40 C at 0 C outside, 70 Hz for hours, never back to 30 Hz) only wastes energy. Only a
             # room that is already below its comfort band may use the full frequency range.
-            if fmax > 0 and s["boost_freq"] > 0 and tr >= sp_now - s["tolerantie_laag"] - SEVERE_K:
+            if fmax > 0 and s["boost_freq"] > 0 and (tr >= sp_now - s["tolerantie_laag"] - SEVERE_K or floor_warm_enough()):
                 fmax = min(fmax, s["boost_freq"])
             return fmax
 
@@ -724,7 +730,7 @@ class SmartController:
         emergency = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - 0.3
         over = tr > sp_now + s["tolerantie_hoog"]
         # only a clearly cold room lifts the frequency limit; a shortfall of a few tenths stays at the efficient 50 Hz
-        severe = tr < s["min_kamertemp"] or tr < sp_now - s["tolerantie_laag"] - SEVERE_K
+        severe = tr < s["min_kamertemp"] or (tr < sp_now - s["tolerantie_laag"] - SEVERE_K and not floor_warm_enough())
         grid_block = self._grid_limiter(inp, s, now)
         d.grid_limited = grid_block
         # room trend over the last ~40 min (K/h)
