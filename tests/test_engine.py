@@ -1047,7 +1047,8 @@ def test_floor_table_is_published_per_outdoor_temperature():
     c = SmartController(); _fill(c)
     d = c.step(_inp(_t(0), room=21.0))
     t = d.diag.get("vloer_setpoint_tabel")
-    assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"])
+    assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"]
+                         and len(t["0"]["kamer"]) == 3)
 
 
 def test_warm_floor_keeps_the_frequency_limit_even_when_room_is_far_below_band():

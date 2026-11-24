@@ -1021,10 +1021,16 @@ class SmartController:
         if self.model.confidence() < 0.5 or not self.model.plausible():
             return None
         out = {}
+        smax = max(s["max_flow_temp"], s["min_setpoint"] + 1.0)
+        rooms = [round(s["setpoint_dag"] + dk, 1) for dk in (-0.4, 0.0, 0.6)]
         for to in (-5, 0, 5, 10, 15):
-            eq = self.model.floor_equilibrium(s["setpoint_dag"], to, 0.0)
-            sp = _clamp(eq + self.trim_at(to), s["min_setpoint"], max(s["max_flow_temp"], s["min_setpoint"] + 1.0))
-            out[str(to)] = {"vloer": round(eq, 1), "setpoint": round(sp, 1)}
+            row = {}
+            for r in rooms:
+                eq = self.model.floor_equilibrium(r, to, 0.0)
+                sp = _clamp(eq + self.trim_at(to), s["min_setpoint"], smax)
+                row[f"{r:.1f}"] = {"vloer": round(eq, 1), "setpoint": round(sp, 1)}
+            main = row[f"{s['setpoint_dag']:.1f}"] if f"{s['setpoint_dag']:.1f}" in row else row[f"{rooms[1]:.1f}"]
+            out[str(to)] = {"vloer": main["vloer"], "setpoint": main["setpoint"], "kamer": row}
         return out
 
     def _learned_curve(self, s: dict):
