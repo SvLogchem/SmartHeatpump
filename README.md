@@ -197,3 +197,6 @@ De frequentielimiet (efficiënte boost-frequentie, standaard 50 Hz) wordt pas op
 
 ### Warme vloer: niet harder duwen (v2.13.2)
 Is de gemeten vloer (bijna) op het niveau dat het model nodig heeft (tekort ≤ 1 K) en wordt de kamer niet kouder, dan blijft de frequentielimiet ook gelden als de kamer ver onder de band zit. De warmte van de vloer naar de kamer kost uren; harder stoken geeft later alleen overshoot. Onder de minimale kamertemperatuur vervalt de limiet altijd.
+
+### Ontdooipiek werkt weer (v2.14.1)
+De regeling meet elke 2 minuten, maar de coil-detectie zocht een stijging van 6 K binnen 100 s en zag daardoor nooit twee samples met een ontdooi ertussen. Sensor Ontdooipiek bleef leeg. Het zoekvenster is nu 150 s.
