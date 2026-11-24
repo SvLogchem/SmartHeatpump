@@ -25,11 +25,14 @@ from .solar import sun_gain
 COP_MIN, COP_MAX = 0.5, 8.0  # anything outside is a measurement artefact, not a COP
 S_MIN = 20.0            # lowest water setpoint we ever ask for
 KP, KI = 1.2, 0.25
-START_GAP = 2.8        # K above the measured water temperature that makes the compressor start (pump starts at ~2.5)
+PV_IMPORT_TOLERANCE_W = 100.0   # up to this grid import still counts as "no import" for the PV surplus
+CP_WATER = 4.186       # kJ/(l*K), pure water
+GLYCOL_CP_LOSS = 0.0032  # relative loss of volumetric heat capacity per % glycol (ethylene/propylene, 20-40 %)
+START_GAP = 2.8        # default of "pomp_start_verschil": K above the measured water temperature that starts the compressor
 COAST_GAP_MIN = 2.5
 SEVERE_K = 0.8       # K below the comfort band from which the frequency limit is lifted
 SETTLE_MIN = 8.0     # minutes of steady frequency and gap before the frequency table learns
-COAST_GAP = 3.0        # K below the measured water temperature while coasting, so the compressor really stops
+COAST_GAP = 3.0        # default of "pomp_stop_verschil": K below the measured water temperature while coasting, so the compressor really stops
 KI_UP, KI_DOWN, PI_MAX = 1.0, 0.5, 6.0   # a persistent shortfall is corrected quickly and over a wide range
 TRIM_RATE, TRIM_TAU_H, TRIM_BIN, TRIM_MIN, TRIM_MAX = 0.35, 4.0, 3.0, -4.0, 6.0   # curve trim: K per hour per K of lasting error, averaging time h, bin width K, limits K
 KP_PLANNED = 0.5       # the planner already anticipates; keep the reactive part gentle      # feedback on top of the model (K per K, K per K*h)
@@ -111,6 +114,7 @@ class Decision:
     window_open: bool = False
     away: bool = False
     grid_limited: bool = False
+    pv_surplus: bool = False
     freq_limited: bool = False         # setpoint limited by the maximum frequency setting
     ice_level: str = "ok"             # ok / let_op / ijs (icing suspected)
     ice_warning: bool = False
@@ -205,6 +209,7 @@ class SmartController:
         self._usage_out: dict = {}
         # persistent scalars
         self.pi_i = 0.0
+        self._manual_pts: list[tuple[float, float]] = []   # user's curve corrections: (outdoor C, K)
         self.trim: dict[int, float] = {}      # learned correction of the heating curve per outdoor-temperature bin
         self.summer_mean: float | None = None
         self.summer = False
@@ -346,11 +351,11 @@ class SmartController:
         return PROGRAM_NIGHT if night else PROGRAM_DAY
 
     @staticmethod
-    def _heating(inp: Inputs, thr: float) -> bool:
+    def _heating(inp: Inputs, thr: float, min_w: float = 250.0) -> bool:
         if inp.freq is not None:
             return inp.freq >= thr
         if inp.power_w is not None:
-            return inp.power_w >= 250.0
+            return inp.power_w >= min_w
         if inp.flow is not None and inp.ret is not None:
             return inp.flow - inp.ret > 1.5
         return False
@@ -414,6 +419,9 @@ class SmartController:
     def step(self, inp: Inputs) -> Decision:
         now = inp.now
         s = {**DEFAULTS, **inp.settings}
+        self._manual_pts = [(-5.0, s["stooklijn_corr_min5"]), (5.0, s["stooklijn_corr_5"]), (15.0, s["stooklijn_corr_15"])]
+        if not any(c for _, c in self._manual_pts):
+            self._manual_pts = []
         dt_h = 0.0
         if self._last_step is not None:
             dt_h = _clamp((now - self._last_step).total_seconds() / 3600.0, 0.0, 0.5)
@@ -476,7 +484,7 @@ class SmartController:
         tr, to_now = inp.room, inp.outside
 
         # ---- bookkeeping: heating state, defrost, energy
-        heating = self._heating(inp, s["min_freq"])
+        heating = self._heating(inp, s["min_freq"], s["pomp_min_vermogen"])
         # the coil changes by ~1 K/s during a defrost: feed every change seen since the last cycle so the peak is the
         # real maximum, not whatever the 2-minute poll happened to catch
         for ts_, v_ in sorted(inp.coil_samples, key=lambda x: x[0]):
@@ -509,7 +517,7 @@ class SmartController:
             d.thermal_kw = 0.0
         else:
             dtw = inp.flow - inp.ret
-            d.thermal_kw = round(max(0.0, inp.flow_lh * 4.186 * dtw / 3600.0), 2) if dtw > 0 else 0.0
+            d.thermal_kw = round(max(0.0, inp.flow_lh * CP_WATER * (1.0 - GLYCOL_CP_LOSS * s["glycol"]) * dtw / 3600.0), 2) if dtw > 0 else 0.0
         d.electric_w = round(power_w, 1)
         if d.thermal_kw > 0 and power_w > 10.0:
             cop = d.thermal_kw / (power_w / 1000.0)
@@ -585,7 +593,11 @@ class SmartController:
         if ref is None and curve is not None:
             ref = curve.ref
         weight_now = weight_for(inp.price_now, ref, s["prijs_gevoeligheid"]) if price_enabled else 1.0
-        pv_surplus = inp.pv_w is not None and inp.pv_w >= s["pv_drempel"]
+        # Surplus = panels above the threshold AND the house is not importing: with a grid sensor, production that
+        # the house itself uses up is not "free" (positive grid power = import, as for the net-import limit)
+        pv_surplus = inp.pv_w is not None and inp.pv_w >= s["pv_drempel"] and (
+            inp.grid_import_w is None or inp.grid_import_w <= PV_IMPORT_TOLERANCE_W)
+        d.pv_surplus = pv_surplus
         d.expensive = bool(price_enabled and inp.price_now is not None
                            and inp.price_now > s["max_stroomprijs"])
 
@@ -639,6 +651,7 @@ class SmartController:
                            if inp.unit_outside is not None and inp.outside is not None else None)
         self._to_now = to_now
         d.diag = self._diag(s, f_known, sun_now)
+        d.diag["pv_overschot"] = pv_surplus
         mode = inp.control_mode
         x_meas = inp.flow if mode == "aanvoer" else inp.ret
 
@@ -670,7 +683,7 @@ class SmartController:
 
         # ---- heating curve: blend learned model with the manual curve
         conf = self.model.confidence()
-        use_learned = inp.learning_enabled and f_known and self.model.plausible()
+        use_learned = f_known and self.model.plausible()      # "learning off" stops learning, not using
         wl = _clamp((conf - 0.35) / 0.45, 0.0, 1.0) if use_learned else 0.0
         w_off = self.dT_sup if mode == "retour" else 0.0
         s_max = max(s["max_flow_temp"], s["min_setpoint"] + 1.0)
@@ -682,12 +695,12 @@ class SmartController:
         def s_base(t, to, sun, sp):
             man = s_manual(to, sun, sp)
             if wl <= 0.0:
-                return _clamp(man + self.trim_at(to), s["min_setpoint"], s_max)
+                return _clamp(man + self.curve_corr(to), s["min_setpoint"], s_max)
             # retour mode: the setpoint *is* the floor/return temperature; aanvoer: supply water
             eq = (self.model.floor_equilibrium(sp, to, sun) if mode == "retour"
                   else self.model.water_equilibrium(sp, to, sun))
             lrn = _clamp(eq, man - 12.0, man + 6.0)   # a too steep manual curve may not pin the learned setpoint high
-            return _clamp(wl * lrn + (1.0 - wl) * man + self.trim_at(to), s["min_setpoint"], s_max)
+            return _clamp(wl * lrn + (1.0 - wl) * man + self.curve_corr(to), s["min_setpoint"], s_max)
 
         # ---- weather forecast helpers
         fc_t = sorted([(t, v) for t, v, _ in inp.weather], key=lambda x: x[0])
@@ -750,7 +763,7 @@ class SmartController:
                     s_min=s["min_setpoint"], s_max=s_max, bedtime=bedtime, quiet_fn=quiet_fn,
                     quiet_boost=s["stille_boost_max"], tol_low=s["tolerantie_laag"],
                     tol_high=s["tolerantie_hoog"], d_max=s["voorverwarm_max"],
-                    bias=self.tracker.bias + self.trim_at(to_now), hard_min_room=s["min_kamertemp"],
+                    bias=self.tracker.bias + self.curve_corr(to_now), hard_min_room=s["min_kamertemp"],
                     allow_coast=True, mode=mode, gap_cap_fn=gap_cap_fn,
                     quiet_energy_mult=1.0 + 2.0 * s["stille_voorkeur"]))
                 self._plan_key = key
@@ -769,7 +782,7 @@ class SmartController:
                 tt = now + timedelta(hours=hh)
                 to_f, sun_f, sp_f = to_fn(tt), sun_fn(tt), sp_at(tt)
                 fut.append({"tijd": tt.strftime("%H:%M"), "buiten": round(to_f, 1), "kamerdoel": round(sp_f, 1),
-                            "vloer": round(self.model.floor_equilibrium(sp_f, to_f, sun_f) + self.trim_at(to_f), 1),
+                            "vloer": round(self.model.floor_equilibrium(sp_f, to_f, sun_f) + self.curve_corr(to_f), 1),
                             "setpoint": round(s_base(tt, to_f, sun_f, sp_f), 1)})
             d.diag["verwacht_setpoint"] = fut
         # ---- decide run / coast (with minimum run and standstill times)
@@ -792,7 +805,7 @@ class SmartController:
             # "full" = the floor temperature that holds the room at its target, plus a little extra to close
             # a current shortfall in reasonable time (a floor exactly at equilibrium only creeps towards the target)
             aim = sp_now + 0.7 * min(max(sp_now - tr, 0.0), 1.5)
-            floor_gap = self.model.floor_equilibrium(aim, to_now, sun_now) + self.trim_at(to_now) - self.f_est
+            floor_gap = self.model.floor_equilibrium(aim, to_now, sun_now) + self.curve_corr(to_now) - self.f_est
         self._floor_gap = floor_gap
         boost = self._boost_step(inp, s, now, tr, sp_now, x_meas, in_quiet, s_max,
                                  blocked=self.summer or window_active or grid_block, floor_gap=floor_gap)
@@ -811,7 +824,7 @@ class SmartController:
         if ((over or (plan_coast and tr <= sp_now + 0.3)) and use_learned and f_known and inp.floor is not None
                 and self.f_est is not None and not (self.summer or window_active or grid_block)
                 and tr <= sp_now + s["tolerantie_hoog"] + 1.0):
-            eq_now = self.model.floor_equilibrium(sp_now, to_now, sun_now) + self.trim_at(to_now)
+            eq_now = self.model.floor_equilibrium(sp_now, to_now, sun_now) + self.curve_corr(to_now)
             # planned coasting with the room just at its target: only hold when the floor is clearly too cold
             floor_hold = eq_now - self.f_est > (0.5 if over else 1.5)
         self._floor_hold = floor_hold
@@ -838,12 +851,15 @@ class SmartController:
                 self._trim_add(to_now, TRIM_RATE * self._e_ema * dt_h)
 
         # ---- setpoint
+        start_gap = s["pomp_start_verschil"]                      # pump profile: K above the water that starts the compressor
+        coast_min = min(COAST_GAP_MIN, s["pomp_stop_verschil"])   # ... and the least that still stops it
         if d.coasting:
+            self._prev_s = None       # the rate limit must restart from the measured water, not the pre-coast setpoint
             # The pump only stops its compressor once the water is ~2 K above its setpoint (seen in
             # real history: stop at +2.0, start at -2.5). A setpoint of "return - 1" therefore kept the
             # compressor running at minimum frequency for up to an hour into the quiet hours.
             fl = self.mod.floor()
-            gap_c = max(COAST_GAP_MIN, 1.0 - fl) if fl is not None and fl < 0 else COAST_GAP    # learned stop gap + 1 K
+            gap_c = max(coast_min, 1.0 - fl) if fl is not None and fl < 0 else s["pomp_stop_verschil"]    # learned stop gap + 1 K
             raw = _clamp((x_meas - gap_c) if x_meas is not None else s["min_setpoint"], s["min_setpoint"], s_max)
             d.reason = ("zomermodus" if self.summer else "raam_open" if window_active
                         else "netlimiet" if grid_block else "dure_stroom" if cap_coast
@@ -888,7 +904,7 @@ class SmartController:
             heat_floor = False
             if s["stook_min"] > 0 and x_meas is not None and tr < sp_now and boost is None:
                 lim = x_meas + (cap if cap is not None else 4.0)
-                tgt = min(s["stook_min"], max(lim, x_meas + START_GAP))
+                tgt = min(s["stook_min"], max(lim, x_meas + start_gap))
                 if raw < tgt:
                     raw, heat_floor = tgt, True
             # Room clearly too cold but the compressor idle (just circulating): a setpoint that is not far
@@ -896,14 +912,14 @@ class SmartController:
             start_kick = bool(
                 not d.heating and boost is None and x_meas is not None and inp.switch_state != "off"
                 and tr < sp_now - s["tolerantie_laag"] - (0.3 if in_quiet else 0.0)
-                and raw < x_meas + START_GAP)
+                and raw < x_meas + start_gap)
             if start_kick:
-                raw = x_meas + START_GAP
+                raw = x_meas + start_gap
             if boost == "boost":
                 fb = s["boost_freq"]
                 if in_quiet and s["max_freq_stil"] > 0:
                     fb = min(fb, s["max_freq_stil"])
-                gap = max(2.8, self.mod.gap_cap(fb) or 3.0)
+                gap = max(start_gap, self.mod.gap_cap(fb) or s["pomp_stop_verschil"])
                 raw, d.freq_limited = max(raw, x_meas + gap), False
             elif boost == "hold":
                 fl = self.mod.floor()
@@ -944,6 +960,22 @@ class SmartController:
                     d.switch = "on"
         self._finish(d, now)
         return d
+
+    def curve_corr(self, to: float) -> float:
+        """Total heating-curve correction (K): the learned trim plus the user's own corrections at -5 / 5 / 15 C."""
+        pts = self._manual_pts
+        man = 0.0
+        if pts:
+            if to <= pts[0][0]:
+                man = pts[0][1]
+            elif to >= pts[-1][0]:
+                man = pts[-1][1]
+            else:
+                for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+                    if x0 <= to <= x1:
+                        man = y0 + (y1 - y0) * (to - x0) / (x1 - x0)
+                        break
+        return self.trim_at(to) + man
 
     def trim_at(self, to: float) -> float:
         """Learned heating-curve correction (K) for an outdoor temperature: linear between bins, flat outside."""
@@ -1045,7 +1077,7 @@ class SmartController:
             "avond_laatste_afwijking": _r(self.tracker.last_error),
             "vloer_geschat": _r(self.f_est),
             "vloer_bron": self._floor_src,
-            "tekort_boost": self._boost or "uit", "vloer_aanhouden": self._floor_hold, "stooklijn_correctie": round(self.trim_at(self._to_now), 2) if self._to_now is not None else None, "vloer_tekort": _r(self._floor_gap), "vloer_gemeten": _r(self._f_meas),
+            "tekort_boost": self._boost or "uit", "vloer_aanhouden": self._floor_hold, "stooklijn_correctie": round(self.trim_at(self._to_now), 2) if self._to_now is not None else None, "stooklijn_handmatig": round(self.curve_corr(self._to_now) - self.trim_at(self._to_now), 2) if self._to_now is not None else None, "vloer_tekort": _r(self._floor_gap), "vloer_gemeten": _r(self._f_meas),
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),
@@ -1060,7 +1092,21 @@ class SmartController:
             "buiten_verschil_unit": self._unit_diff,
             "modulatie_minimaal_verschil": self.mod.floor(),
             "modulatie_frequentie_op_minimum": self.mod.freq_at_floor(),
-            "frequentie_tabel": self.mod.table() or None,
+            **self._freq_table_out(s),
+        }
+
+    def _freq_table_out(self, s: dict) -> dict:
+        lo, hi = self.mod.f_range(s["pomp_min_freq"], s["pomp_max_freq"])
+        rows = self.mod.curve(s["pomp_min_freq"], s["pomp_max_freq"])
+        full = {f"{r['verschil']:+.1f}": r["frequentie"] for r in rows}
+        reach = next((r["verschil"] for r in rows if hi > 0 and r["frequentie"] >= hi), None)
+        return {
+            "frequentie_tabel": full or None,
+            "frequentie_tabel_bron": {f"{r['verschil']:+.1f}": r["bron"] for r in rows} or None,
+            "frequentie_tabel_kw": {f"{r['verschil']:+.1f}": r["vermogen_kw"] for r in rows} or None,
+            "pomp_min_frequentie": lo or None,
+            "pomp_max_frequentie": hi or None,
+            "verschil_voor_max_frequentie": reach,
         }
 
     def _floor_table(self, s: dict):
@@ -1075,7 +1121,7 @@ class SmartController:
             row = {}
             for r in rooms:
                 eq = self.model.floor_equilibrium(r, to, 0.0)
-                raw = eq + self.trim_at(to)
+                raw = eq + self.curve_corr(to)
                 sp = _clamp(raw, s["min_setpoint"], smax)
                 row[f"{r:.1f}"] = {"vloer": round(eq, 1), "setpoint": round(sp, 1), "berekend": round(raw, 1)}
             main = row[f"{s['setpoint_dag']:.1f}"] if f"{s['setpoint_dag']:.1f}" in row else row[f"{rooms[1]:.1f}"]

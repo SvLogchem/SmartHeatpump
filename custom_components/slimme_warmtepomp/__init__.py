@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import voluptuous as vol
 
@@ -10,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_COIL, DOMAIN, SERVICE_RESET_MODEL
+from .const import CONF_COIL, DOMAIN, SERVICE_RESET_MODEL, VERSION
 from .coordinator import SmartHeatpumpCoordinator
 from .engine.settings import REMOVED_NUMBER_KEYS
 
@@ -20,7 +21,30 @@ PLATFORMS = ["sensor", "number", "binary_sensor", "climate", "switch", "button"]
 type SlimmeConfigEntry = ConfigEntry[SmartHeatpumpCoordinator]
 
 
+STRATEGY_FILE = "slimme-warmtepomp-strategy.js"
+STRATEGY_URL = f"/{DOMAIN}_frontend/{STRATEGY_FILE}"
+
+
+async def _register_dashboard_strategy(hass: HomeAssistant) -> None:
+    """Serve the dashboard strategy (frontend/*.js) and load it in the frontend.
+
+    Afterwards "Slimme Warmtepomp" is offered under Settings > Dashboards > Add dashboard > Community dashboards.
+    A failure here must never stop the heat pump control, so everything is caught and logged.
+    """
+    try:
+        from homeassistant.components.frontend import add_extra_js_url
+        from homeassistant.components.http import StaticPathConfig
+
+        folder = Path(__file__).parent / "frontend"
+        await hass.http.async_register_static_paths([StaticPathConfig(f"/{DOMAIN}_frontend", str(folder), False)])
+        add_extra_js_url(hass, f"{STRATEGY_URL}?v={VERSION}")
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Could not register the dashboard strategy (%s). The integration itself works; create a dashboard "
+                        "manually with 'strategy: type: custom:slimme-warmtepomp' once the file is available", err)
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    await _register_dashboard_strategy(hass)
     async def _reset(call: ServiceCall) -> None:
         for entry in hass.config_entries.async_entries(DOMAIN):
             coordinator = getattr(entry, "runtime_data", None)

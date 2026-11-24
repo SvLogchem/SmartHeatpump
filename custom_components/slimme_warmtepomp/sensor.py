@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature, UnitOfTime
+from homeassistant.const import MATCH_ALL, PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature, UnitOfTime
 
 from .entity import SlimmeWPEntity
 
@@ -12,6 +12,8 @@ class SetpointSensor(SlimmeWPEntity, SensorEntity):
 
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_device_class = SensorDeviceClass.TEMPERATURE
+    # ~4 KB of attributes change every cycle: show them live, but keep them out of the recorder database
+    _unrecorded_attributes = frozenset({MATCH_ALL})
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator, "setpoint", "Slimme WP Berekend Setpoint", "sensor.slimme_wp_setpoint")
@@ -23,9 +25,11 @@ class SetpointSensor(SlimmeWPEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         d = self.decision
+        inputs = {"invoer_sensoren": self.coordinator.input_entities()}      # read by the generated dashboard
         if d is None:
-            return {}
+            return inputs
         return {
+            **inputs,
             "reden": d.reason,
             "actief_programma": d.program,
             "kamer_setpoint": d.room_setpoint,

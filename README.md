@@ -44,7 +44,7 @@ Alles hieronder is optioneel: koppel je de sensor niet, dan bestaan de bijbehore
 
 ## Zacht draaien (laag compressortoerental)
 
-De frequentie van de pomp kan niet worden aangestuurd, maar het verschil tussen setpoint en retourtemperatuur wel, en daar bepaalt de pomp zelf zijn toerental uit. De integratie leert per verschil (stappen van 0,5 K) of de compressor blijft draaien en met welke frequentie en welk vermogen. Het *minimale verschil* waarbij de compressor nog draait wordt het vloerverschil. Als er weinig warmte nodig is (kamer op setpoint, geen voorverwarmen) houdt de regeling het setpoint op retour + dat minimum + `modulatie_marge`, zodat de pomp zacht blijft draaien in plaats van hard te draaien en te stoppen. Af en toe (hoogstens elke 2 uur, 30 minuten, alleen als de kamer boven setpoint zit) probeert hij 0,5 K lager om de kennis bij te houden. Zonder geleerde waarde doet de functie niets. Uitzetten kan met `switch.slimme_wp_modulatie_actief`; je ziet het aan `binary_sensor.slimme_wp_zacht_draaien` en de attributen `modulatie_minimaal_verschil` en `modulatie_frequentie_op_minimum` van `sensor.slimme_wp_setpoint`.
+De frequentie van de pomp kan niet worden aangestuurd, maar de integratie leert per verschil tussen setpoint en retour welke frequentie de pomp draait (`frequentie_tabel`). De tabel loopt van de **minimale** tot de **maximale** frequentie van jouw pomp (instellingen *Pomp Minimale/Maximale Frequentie*; staan ze op 0, dan leert de integratie het bereik zelf). Zodra de maximale frequentie bereikt is, stopt de tabel: bij +5 K = 70 Hz komt er geen +6 K, +9 K meer bij, want een groter verschil geeft toch niet meer Hz. Tussenliggende verschillen worden ingevuld (`frequentie_tabel_bron`: *gemeten*, *interpolatie* of, zolang het maximum nog niet gezien is, *schatting*); `verschil_voor_max_frequentie` zegt vanaf welk verschil de pomp op vol vermogen draait. Met `max_freq_dag` en `max_freq_stil` (Hz, 0 = uit) bepaal je hoe hard de pomp mag gaan. Daaruit volgt een maximaal verschil; het setpoint komt dan nooit hoger dan retour + dat verschil. Daarmee kan de pomp overdag kort hard draaien om de retour op te laden (bijvoorbeeld naar 28-29 °C) en daarna met het kleine verschil rustig laag blijven draaien (zie *Zacht draaien*), terwijl hij in de stille uren onder zijn lagere grens blijft.
 
 ## Frequentiegrens (dag en stille uren)
 
@@ -139,6 +139,63 @@ Koppel in de opties de coil-/verdampertemperatuur van de pomp (bij Tuya vaak `pg
   Eén reden geeft `let_op`, twee of `kritiek` geeft `ijs`. Bij `ijs` verschijnt (hoogstens elke 12 uur) een melding in Home Assistant. De regeling kan de ontdooi-instellingen van de pomp niet zelf aanpassen: controleer interval, starttemperatuur en maximale ontdooitijd in het bedienpaneel.
 - De regeling leert dit relatief aan jouw installatie, er zijn geen vaste natuurkundige drempels, behalve de genoemde percentages. Pas na een paar ontdooicycli is er een referentie.
 
+## Pomp-profiel (andere warmtepomp?)
+
+De regeling is niet aan één merk gebonden. De eigenschappen van de pomp staan als instellingen (categorie *Configuratie*) en hoef je meestal niet aan te raken:
+
+| Instelling | Standaard | Wat het doet |
+|---|---|---|
+| Pomp Minimale Frequentie | 0 = leren | Laagste frequentie waarop de compressor draait. Begrenst de frequentietabel naar onderen. |
+| Pomp Maximale Frequentie | 0 = leren | Hoogste frequentie. De tabel stopt zodra deze bereikt is. Leer je het bereik liever niet automatisch, vul dan bijvoorbeeld 70 in. |
+| Pomp Startverschil | 2,8 K | Hoeveel het setpoint boven de watertemperatuur moet liggen om de compressor te starten (Alsavo/Midea: ±2,5 K). |
+| Pomp Stopverschil | 3,0 K | Hoeveel het setpoint onder de watertemperatuur moet liggen om hem te laten stoppen. |
+| Pomp Minimaal Vermogen Bij Draaien | 250 W | Alleen gebruikt zonder frequentiesensor: boven dit vermogen telt de pomp als "draait". |
+| Glycol Percentage | 0 % | Corrigeert de thermische vermogensberekening (en dus de COP) voor water met glycol: ongeveer 0,3 % minder per % glycol. |
+
+Op de sensor *Setpoint* staan `pomp_min_frequentie`, `pomp_max_frequentie` en `verschil_voor_max_frequentie`, zodat je ziet wat de integratie van jouw pomp gebruikt.
+
+## Wat doet welke sensor, en wanneer?
+
+| Invoer | Wat de regeling ermee doet |
+|---|---|
+| Binnentemperatuur (woonkamer) | **Het doel.** Alles wordt gestuurd om deze temperatuur op het dag-/nachtsetpoint te krijgen. Ook de snelheid waarmee ze verandert wordt gebruikt (niet harder duwen als de kamer al stijgt). |
+| Vloertemperatuur | De vloer is het reservoir: het model leert hoe snel de vloer warmte afgeeft en hoe warm hij moet zijn. Met een warme vloer wordt niet meer geduwd (de warmte is onderweg); met een koude vloer en een koude kamer start de boost. Zonder vloersensor wordt de vloer geschat uit de retour. |
+| Retour (en aanvoer) | In *retour*-modus is het setpoint de gewenste retour/vloertemperatuur. Het verschil setpoint - retour bepaalt de frequentie van de pomp (frequentietabel). Aanvoer minus retour geeft (met het debiet) het thermisch vermogen en de COP. |
+| Buitentemperatuur + weersverwachting | Stooklijn en planning: koude uren worden vooraf verwarmd, milde uren worden benut. Zonder uurlijkse verwachting valt de integratie terug op een verwachting per halve dag of per dag. |
+| Compressorfrequentie | Bepaalt of de pomp draait, voedt de frequentietabel en de begrenzing (maximale Hz dag/stil). |
+| Vermogen / spanning+stroom | Verbruik, kosten en COP. Zonder frequentiesensor ook de detectie of de pomp draait. |
+| Coil-sensor (optioneel) | Ontdooipiek en kwaliteit van het ontdooien, ijsvormingswaarschuwing. |
+| Stroomprijs | Duur: uitlopen. Goedkoop: voorverwarmen. |
+| Zonnepanelen (+ net) | Overschot = panelen boven de drempel en het huis haalt (bijna) niets van het net. Dan voorverwarmen, extra setpoint (*Zonnepanelen Boost*) of tapwater. |
+| Raam/deur, aanwezigheid | Tijdelijk uitlopen resp. het afwezig-setpoint. |
+
+**Stooklijn aanpassen.** Er zijn drie lagen, van grof naar fijn:
+1. *Basis Temperatuur*, *Setpoint Offset* en *Stooklijn Helling*: de handmatige stooklijn, waarop de regeling terugvalt zolang het model nog leert. Het geleerde vloermodel neemt het gaandeweg over.
+2. *Stooklijn Correctie Bij -5 / 5 / 15 °C* (v2.17): drie eigen correcties in graden die over de hele stooklijn (geleerd en handmatig) worden opgeteld, met lineaire overgang ertussen. Handig als het bij één weertype structureel te koud of te warm is. De regeling bewaakt de kamertemperatuur echter zelf: slaat een correctie door, dan leert de automatische correctie (`stooklijn_correctie`) dat deels terug. Wil je een correctie vast laten staan, zet dan *Leren* uit.
+3. De automatische correctie per buitentemperatuur (`stooklijn_correctie`), die de integratie zelf bijhoudt.
+
+Daarnaast begrenzen *Laagste Setpoint Warmtepomp* en *Max Aanvoertemperatuur* het setpoint, en *Minimaal Setpoint Bij Verwarmen* zet een ondergrens zolang de kamer te koud is.
+
+## Kant-en-klaar dashboard (v2.17.0)
+
+De integratie levert een complete dashboard mee. Je hoeft niets te kopiëren: het wordt uit de entiteiten opgebouwd die jouw installatie heeft, dus het past zich aan jouw sensoren en optionele onderdelen aan en groeit bij elke update vanzelf mee.
+
+1. Herstart Home Assistant na het installeren of bijwerken.
+2. *Instellingen → Dashboards → Dashboard toevoegen → Community-dashboards → Slimme Warmtepomp* (vereist Home Assistant 2026.5 of nieuwer).
+3. Klaar. Wil je het in een bestaand dashboard? Open de raw-configuratie en zet erin:
+
+```yaml
+strategy:
+  type: custom:slimme-warmtepomp
+```
+
+Tabbladen: **Overzicht** (status, regelingschakelaars, wat de regeling nu doet, rendement, verloop), **Leren** (modelvertrouwen, geleerde tabellen: frequentie per verschil, verwacht setpoint, vloer en setpoint per buitentemperatuur, stooklijn), **Instellingen** (alle instellingen, gegroepeerd; optionele groepen alleen als ze bestaan), **Warmtepomp** (jouw eigen sensoren: aanvoer, retour, frequentie, vermogen, flow, coil en grafieken) en **Kosten & analyse**.
+
+- De grafieken gebruiken *mini-graph-card* als je die via HACS hebt, anders de ingebouwde geschiedenisgrafiek.
+- Een nieuwe instelling die ooit aan de integratie wordt toegevoegd, verschijnt automatisch onder *Overig*.
+- Verschijnt *Slimme Warmtepomp* niet in de lijst? Voeg het bestand dan handmatig toe als resource (*Dashboards → ⋮ → Bronnen → Resource toevoegen*): URL `/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js`, type *JavaScript-module*. Het log vermeldt een waarschuwing als de integratie het bestand niet zelf kon laden.
+- Wil je het dashboard aanpassen? Kopieer het via *Dashboard bewerken → ⋮ → Controle overnemen* naar een gewoon dashboard; daarna is het van jou en wordt het niet meer automatisch bijgewerkt.
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.
@@ -228,3 +285,20 @@ In `vloer_setpoint_tabel` staat per kamerdoel naast `setpoint` (wat naar de pomp
 
 ### Geplande uitloop vervangen door zacht doordraaien bij zeer koude vloer (v2.15.3)
 Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven) en de gemeten vloer meer dan 1,5 K onder het modelniveau zit, dan blijft de pomp zacht doordraaien. Anders zakt de kamer straks door de koude vloer onder het setpoint en moet de pomp hard opladen. Bij prijs-/netlimiet-uitloop of raam open verandert er niets.
+
+### Tweede review (v2.16.0)
+- Na uitlopen start de setpointbegrenzing (max. 0,5 K per ronde) opnieuw vanaf het gemeten water, niet meer vanaf het setpoint van vóór het uitlopen. De pomp start daardoor sneller als de kamer te koud is.
+- "Blijft leren" uit stopt alleen het leren; het geleerde model blijft in gebruik.
+- De grote attributen van sensor Setpoint (±4 KB per ronde) worden niet meer in de recorder-database opgeslagen. Ze blijven live zichtbaar.
+- Nieuw: "Diagnostiek downloaden" op de integratiepagina (instellingen, geleerd model, laatste beslissing).
+- Een weerentiteit die geen uurlijkse voorspelling geeft, levert eenmalig een waarschuwing in het log op.
+
+### Pomp-profiel en volledige frequentietabel (v2.17.0)
+- Nieuw: pomp-profiel (min/max frequentie, start- en stopverschil, minimaal vermogen, glycol) zodat de integratie ook met andere warmtepompen werkt. Standaardwaarden gedragen zich als voorheen.
+- De frequentietabel loopt van minimale tot maximale Hz, is aangevuld met interpolatie en stopt zodra het maximum bereikt is (geen +6 K, +9 K meer na +5 K = 70 Hz). Het gemeten maximum en minimum worden onthouden.
+- Nieuw: *Stooklijn Correctie Bij -5 / 5 / 15 °C*.
+- Zonne-overschot wordt met een netsensor alleen aangenomen als het huis niet importeert (zichtbaar als `pv_overschot` op de sensor Setpoint).
+- Weersverwachting valt terug op twice_daily en daily als de weerentiteit geen uurlijkse verwachting geeft.
+- Debug-logregel bij elke wijziging van reden, setpoint of schakelaar (zet `logger: custom_components.slimme_warmtepomp: debug`).
+- Nieuw: kant-en-klaar dashboard als dashboard-strategie (zie *Kant-en-klaar dashboard*), samen met de sensor-attributen `invoer_sensoren` waarmee het jouw eigen sensoren vindt.
+- CI: tests draaien bij elke push/pull request, een release wordt alleen gemaakt als de tests slagen; HACS- en hassfest-controles toegevoegd.

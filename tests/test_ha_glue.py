@@ -2,6 +2,7 @@
 import asyncio
 import importlib
 import os
+from pathlib import Path
 import sys
 import types
 from datetime import datetime, timedelta
@@ -322,3 +323,82 @@ def test_relearn_button_uses_percentage_setting(setup):
     run(by_uid["abc123_herleer_percentage"].async_set_native_value(50.0))
     run(by_uid["abc123_opnieuw_aanleren"].async_press())
     assert abs(c.controller.pi_i - 1.0) < 1e-6 and abs(c.controller.trim[2] - 0.5) < 1e-6
+
+
+def test_forecast_falls_back_to_daily_when_hourly_is_not_supported(setup):
+    from homeassistant.exceptions import HomeAssistantError
+    h, entry, c = setup
+    types_asked = []
+
+    async def fake_call(domain, service, data, blocking=False, return_response=False):
+        if domain == "weather":
+            types_asked.append(data["type"])
+            if data["type"] != "daily":
+                raise HomeAssistantError("not supported")
+            day = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+            return {data["entity_id"]: {"forecast": [
+                {"datetime": (day + timedelta(days=i)).isoformat(), "temperature": 8.0, "templow": 2.0} for i in range(1, 5)]}}
+    h.services.async_call = fake_call
+    c._forecast_at, c._forecast_type = None, None
+    run(c._refresh_forecast(datetime.now().astimezone()))
+    assert types_asked == ["hourly", "twice_daily", "daily"]
+    assert len(c._forecast) == 4 and all(abs(f[1] - 5.0) < 1e-9 for f in c._forecast)       # mean of high and low
+    assert c._forecast_type == "daily"
+    # the working type is remembered: the next refresh asks for it directly
+    types_asked.clear(); c._forecast_at = None
+    run(c._refresh_forecast(datetime.now().astimezone()))
+    assert types_asked == ["daily"]
+
+
+def test_decision_changes_are_logged_at_debug_level(setup, caplog):
+    import logging
+    h, entry, c = setup
+    c._last_logged = None
+    with caplog.at_level(logging.DEBUG):
+        run(c._async_update_data())
+    assert any("Decision: reason=" in r.getMessage() for r in caplog.records)
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        run(c._async_update_data())             # unchanged decision: no new line
+    assert not any("Decision: reason=" in r.getMessage() for r in caplog.records)
+
+
+def test_dashboard_strategy_is_served_and_loaded_in_the_frontend(monkeypatch, tmp_path):
+    import types as _t
+    init = importlib.import_module(PKG)
+    registered, added = [], []
+    http_mod = sys.modules.get("homeassistant.components.http") or _t.ModuleType("homeassistant.components.http")
+    frontend_mod = sys.modules.get("homeassistant.components.frontend") or _t.ModuleType("homeassistant.components.frontend")
+
+    class StaticPathConfig:
+        def __init__(self, url_path, path, cache_headers):
+            self.url_path, self.path, self.cache_headers = url_path, path, cache_headers
+
+    monkeypatch.setattr(http_mod, "StaticPathConfig", StaticPathConfig, raising=False)
+    monkeypatch.setattr(frontend_mod, "add_extra_js_url", lambda hass, url, es5=False: added.append(url), raising=False)
+    monkeypatch.setitem(sys.modules, "homeassistant.components.http", http_mod)
+    monkeypatch.setitem(sys.modules, "homeassistant.components.frontend", frontend_mod)
+
+    async def reg(paths):
+        registered.extend(paths)
+    h, _ = make_hass()
+    h.http = types.SimpleNamespace(async_register_static_paths=reg)
+    run(init._register_dashboard_strategy(h))
+    assert len(registered) == 1 and registered[0].url_path == "/slimme_warmtepomp_frontend"
+    assert (Path(registered[0].path) / "slimme-warmtepomp-strategy.js").is_file()
+    assert added == [f"/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js?v={init.VERSION}"]
+
+
+def test_failing_dashboard_registration_never_breaks_the_integration(caplog):
+    init = importlib.import_module(PKG)
+    h, _ = make_hass()                     # no hass.http at all
+    run(init._register_dashboard_strategy(h))
+    assert any("dashboard strategy" in r.getMessage() for r in caplog.records)
+
+
+def test_setpoint_sensor_exposes_the_connected_sensors_for_the_dashboard(setup):
+    h, entry, c = setup
+    attrs = c.input_entities()
+    assert attrs["kamer"] == "sensor.room" and attrs["retour"] == "sensor.ret" and attrs["pomp_schakelaar"] == "switch.wp"
+    sp = next(e for p, e in h.entities if e.entity_id == "sensor.slimme_wp_setpoint")
+    assert sp.extra_state_attributes["invoer_sensoren"] == attrs
