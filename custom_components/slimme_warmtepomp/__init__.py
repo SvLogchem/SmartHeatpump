@@ -5,7 +5,7 @@ import logging
 
 import voluptuous as vol
 
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import entity_registry as er
@@ -51,6 +51,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlimmeConfigEntry) -> bo
         await coordinator.async_save()
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _save_on_stop))
+    # coil sensor: record every change so a defrost's peak is measured at full resolution
+    entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, coordinator.on_coil_event))
     # entities restore their last values (numbers, switches, climate) while being added ...
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # ... so the first control cycle already runs with the user's settings.

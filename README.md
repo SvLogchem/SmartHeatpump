@@ -209,3 +209,7 @@ Het attribuut `vloer_setpoint_tabel` toont per buitentemperatuur drie kamerdoele
 
 ### Verwacht setpoint komende uren (v2.14.0)
 Attribuut `verwacht_setpoint` (sensor Setpoint): voor nu en elke 2 uur tot 12 uur vooruit het kamerdoel, de benodigde vloertemperatuur en het basissetpoint, berekend met de weersvoorspelling en de zon en inclusief de geleerde stooklijn-correctie. Voorverwarmen en uitlopen van de planner komen daar nog bovenop.
+
+### Coil per seconde en plan zichtbaar tijdens ontdooien (v2.15.0)
+- Elke wijziging van de coil-sensor wordt tussen twee regelrondes bewaard (event-gedreven). De ontdooipiek is daardoor de echte hoogste waarde van de ontdooi, niet wat de 2-minuten-meting toevallig zag.
+- Tijdens ontdooien (en tapwater) blijven Plan, Verwacht buiten, Kamer na bedtijd, Verwachte afkoeling enz. de laatst berekende waarde tonen in plaats van "onbekend".

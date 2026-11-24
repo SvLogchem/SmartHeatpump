@@ -61,6 +61,7 @@ class Inputs:
     weather: list = field(default_factory=list)          # [(datetime, temp, cloud%|None)]
     cloud_now: float | None = None
     coil_temp: float | None = None      # coil/evaporator temperature of the pump (optional)
+    coil_samples: tuple = ()            # (time, value) of every coil change since the previous cycle (event driven)
     unit_outside: float | None = None   # the heat pump's own outdoor sensor (information only)
     lat: float = 52.0
     lon: float = 5.0
@@ -220,6 +221,8 @@ class SmartController:
         self._win: list = []
         self._tr_win: list = []
         self._lw: list = []
+        self._last_heating = False
+        self._plan_diag: dict = {}
         self._floor_hold = False
         self._tr_rate = 0.0
         self._e_ema = 0.0
@@ -454,6 +457,12 @@ class SmartController:
 
         # ---- bookkeeping: heating state, defrost, energy
         heating = self._heating(inp, s["min_freq"])
+        # the coil changes by ~1 K/s during a defrost: feed every change seen since the last cycle so the peak is the
+        # real maximum, not whatever the 2-minute poll happened to catch
+        for ts_, v_ in sorted(inp.coil_samples, key=lambda x: x[0]):
+            if ts_ < now:
+                self.coil.update(ts_, v_, self._last_heating)
+        self._last_heating = heating
         coil_defrost = self.coil.update(now, inp.coil_temp, heating)
         d.defrost = bool(heating and (coil_defrost or (inp.flow is not None and inp.ret is not None
                                                        and inp.flow - inp.ret < -0.5)))
@@ -1108,7 +1117,16 @@ class SmartController:
             self._grid_hi_since = None
         return False
 
+    _PLAN_KEYS = ("plan", "plan_reden", "voorspeld_kamer_na_bedtijd", "voorspeld_vloer_bedtijd", "vloer_doel_bedtijd",
+                  "voorspeld_kamer_min", "voorspeld_kamer_max", "start_voorverwarmen", "verwacht_buiten",
+                  "verwacht_setpoint")
+
     def _finish(self, d: Decision, now: datetime) -> None:
+        if "plan" in d.diag:        # a full cycle: remember the plan values for cycles that stop early
+            self._plan_diag = {k: d.diag[k] for k in self._PLAN_KEYS if k in d.diag}
+        elif self._plan_diag:       # defrost / tapwater / ...: keep showing the last known plan instead of "unknown"
+            for k, v in self._plan_diag.items():
+                d.diag.setdefault(k, v)
         if d.shadow:  # "schaduwmodus": everything is calculated and visible, nothing is sent
             d.switch = None
             d.dhw_request = None

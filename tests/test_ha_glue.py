@@ -64,7 +64,7 @@ class FakeHass:
         self.config = types.SimpleNamespace(latitude=52.37, longitude=4.9)
         self.config_entries = FakeConfigEntries(self)
         self.entities = []
-        self.bus = types.SimpleNamespace(async_listen_once=lambda *a, **k: (lambda: None))
+        self.bus = types.SimpleNamespace(async_listen_once=lambda *a, **k: (lambda: None), async_listen=lambda *a, **k: (lambda: None))
 
     async def async_add_executor_job(self, fn, *a):
         return fn(*a)

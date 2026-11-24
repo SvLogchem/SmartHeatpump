@@ -1087,3 +1087,27 @@ def test_expected_setpoint_table_covers_the_coming_hours():
         d = c.step(_inp(_t(m), room=20.5, floor=22.0, ret=24.0, freq=0.0))
     f = d.diag.get("verwacht_setpoint")
     assert f is None or (len(f) == 7 and all(r["setpoint"] >= DEFAULTS["min_setpoint"] for r in f))
+
+
+def test_event_driven_coil_samples_give_the_real_defrost_peak():
+    c = SmartController()
+    t0 = _t(0)
+    for i in range(6):
+        c.step(_inp(t0 + timedelta(minutes=2 * i), coil_temp=-5.0, freq=40.0, flow=30.0, ret=27.0))
+    t = t0 + timedelta(minutes=12)
+    fast = tuple((t - timedelta(seconds=110 - s), v) for s, v in
+                 ((5, -2.0), (15, 8.0), (30, 24.0), (45, 41.0), (60, 33.0), (80, 20.0)))   # 41 is the real peak
+    c.step(_inp(t, coil_temp=15.0, coil_samples=fast, freq=40.0, flow=30.0, ret=27.0))       # poll only sees 15
+    for k in range(1, 5):
+        c.step(_inp(t + timedelta(minutes=2 * k), coil_temp=-3.0, freq=40.0, flow=30.0, ret=27.0))
+    assert c.coil.last_peak == pytest.approx(41.0)
+
+
+def test_plan_values_stay_visible_during_a_defrost_cycle():
+    c = SmartController()
+    for m in range(6):
+        d = c.step(_inp(_t(m * 2), room=20.5, floor=22.0, ret=24.0, freq=40.0, flow=30.0, switch_state="on"))
+    assert "plan" in d.diag and "verwacht_buiten" in d.diag
+    d = c.step(_inp(_t(14), room=20.5, floor=22.0, ret=29.0, freq=40.0, flow=24.0, switch_state="on"))   # flow < return
+    assert d.defrost and d.reason == "ontdooien"
+    assert d.diag["plan"] == c._plan_diag["plan"] and d.diag["verwacht_buiten"] == c._plan_diag["verwacht_buiten"]
