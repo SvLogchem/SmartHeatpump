@@ -176,6 +176,26 @@ Op de sensor *Setpoint* staan `pomp_min_frequentie`, `pomp_max_frequentie` en `v
 
 Daarnaast begrenzen *Laagste Setpoint Warmtepomp* en *Max Aanvoertemperatuur* het setpoint, en *Minimaal Setpoint Bij Verwarmen* zet een ondergrens zolang de kamer te koud is.
 
+## Kant-en-klaar dashboard (v2.17.0)
+
+De integratie levert een complete dashboard mee. Je hoeft niets te kopiëren: het wordt uit de entiteiten opgebouwd die jouw installatie heeft, dus het past zich aan jouw sensoren en optionele onderdelen aan en groeit bij elke update vanzelf mee.
+
+1. Herstart Home Assistant na het installeren of bijwerken.
+2. *Instellingen → Dashboards → Dashboard toevoegen → Community-dashboards → Slimme Warmtepomp* (vereist Home Assistant 2026.5 of nieuwer).
+3. Klaar. Wil je het in een bestaand dashboard? Open de raw-configuratie en zet erin:
+
+```yaml
+strategy:
+  type: custom:slimme-warmtepomp
+```
+
+Tabbladen: **Overzicht** (status, regelingschakelaars, wat de regeling nu doet, rendement, verloop), **Leren** (modelvertrouwen, geleerde tabellen: frequentie per verschil, verwacht setpoint, vloer en setpoint per buitentemperatuur, stooklijn), **Instellingen** (alle instellingen, gegroepeerd; optionele groepen alleen als ze bestaan), **Warmtepomp** (jouw eigen sensoren: aanvoer, retour, frequentie, vermogen, flow, coil en grafieken) en **Kosten & analyse**.
+
+- De grafieken gebruiken *mini-graph-card* als je die via HACS hebt, anders de ingebouwde geschiedenisgrafiek.
+- Een nieuwe instelling die ooit aan de integratie wordt toegevoegd, verschijnt automatisch onder *Overig*.
+- Verschijnt *Slimme Warmtepomp* niet in de lijst? Voeg het bestand dan handmatig toe als resource (*Dashboards → ⋮ → Bronnen → Resource toevoegen*): URL `/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js`, type *JavaScript-module*. Het log vermeldt een waarschuwing als de integratie het bestand niet zelf kon laden.
+- Wil je het dashboard aanpassen? Kopieer het via *Dashboard bewerken → ⋮ → Controle overnemen* naar een gewoon dashboard; daarna is het van jou en wordt het niet meer automatisch bijgewerkt.
+
 ## Entiteiten
 
 - `climate.slimme_wp_thermostaat`: dag/nacht volgt het schema. Handmatig instellen blijft actief tot de volgende dag/nacht-wissel.
@@ -280,4 +300,5 @@ Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven)
 - Zonne-overschot wordt met een netsensor alleen aangenomen als het huis niet importeert (zichtbaar als `pv_overschot` op de sensor Setpoint).
 - Weersverwachting valt terug op twice_daily en daily als de weerentiteit geen uurlijkse verwachting geeft.
 - Debug-logregel bij elke wijziging van reden, setpoint of schakelaar (zet `logger: custom_components.slimme_warmtepomp: debug`).
+- Nieuw: kant-en-klaar dashboard als dashboard-strategie (zie *Kant-en-klaar dashboard*), samen met de sensor-attributen `invoer_sensoren` waarmee het jouw eigen sensoren vindt.
 - CI: tests draaien bij elke push/pull request, een release wordt alleen gemaakt als de tests slagen; HACS- en hassfest-controles toegevoegd.

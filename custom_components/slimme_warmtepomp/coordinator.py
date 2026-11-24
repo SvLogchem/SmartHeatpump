@@ -377,6 +377,18 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
                         "ontdooitijd) en kijk of de verdamper vrij is van ijs."),
             "notification_id": "slimme_warmtepomp_ijsvorming"}, blocking=False)
 
+    # role -> config key: the sensors the user connected (the generated dashboard shows and graphs exactly these)
+    _INPUT_ROLES = {
+        "kamer": CONF_ROOM, "buiten": CONF_OUTSIDE, "aanvoer": CONF_FLOW, "retour": CONF_RETURN, "vloer": CONF_FLOOR,
+        "frequentie": CONF_FREQ, "debiet_1": CONF_FLOW_RATE_1, "debiet_2": CONF_FLOW_RATE_2, "vermogen": CONF_POWER,
+        "spanning": CONF_VOLTAGE, "stroom": CONF_CURRENT, "weer": CONF_WEATHER, "prijs": CONF_PRICE, "zonnepanelen": CONF_PV,
+        "net": CONF_GRID, "buiten_unit": CONF_UNIT_OUTSIDE, "coil": CONF_COIL, "tank": CONF_DHW_TEMP,
+        "pomp_setpoint": CONF_TARGET, "pomp_schakelaar": CONF_SWITCH,
+    }
+
+    def input_entities(self) -> dict[str, str]:
+        return {role: self.cfg[key] for role, key in self._INPUT_ROLES.items() if isinstance(self.cfg.get(key), str) and self.cfg.get(key)}
+
     def _log_changes(self, d: Decision) -> None:
         """One debug line whenever the decision changes in a way that matters (enable with logger: debug)."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):

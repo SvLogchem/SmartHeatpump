@@ -25,9 +25,11 @@ class SetpointSensor(SlimmeWPEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         d = self.decision
+        inputs = {"invoer_sensoren": self.coordinator.input_entities()}      # read by the generated dashboard
         if d is None:
-            return {}
+            return inputs
         return {
+            **inputs,
             "reden": d.reason,
             "actief_programma": d.program,
             "kamer_setpoint": d.room_setpoint,

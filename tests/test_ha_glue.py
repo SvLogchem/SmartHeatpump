@@ -2,6 +2,7 @@
 import asyncio
 import importlib
 import os
+from pathlib import Path
 import sys
 import types
 from datetime import datetime, timedelta
@@ -360,3 +361,44 @@ def test_decision_changes_are_logged_at_debug_level(setup, caplog):
     with caplog.at_level(logging.DEBUG):
         run(c._async_update_data())             # unchanged decision: no new line
     assert not any("Decision: reason=" in r.getMessage() for r in caplog.records)
+
+
+def test_dashboard_strategy_is_served_and_loaded_in_the_frontend(monkeypatch, tmp_path):
+    import types as _t
+    init = importlib.import_module(PKG)
+    registered, added = [], []
+    http_mod = sys.modules.get("homeassistant.components.http") or _t.ModuleType("homeassistant.components.http")
+    frontend_mod = sys.modules.get("homeassistant.components.frontend") or _t.ModuleType("homeassistant.components.frontend")
+
+    class StaticPathConfig:
+        def __init__(self, url_path, path, cache_headers):
+            self.url_path, self.path, self.cache_headers = url_path, path, cache_headers
+
+    monkeypatch.setattr(http_mod, "StaticPathConfig", StaticPathConfig, raising=False)
+    monkeypatch.setattr(frontend_mod, "add_extra_js_url", lambda hass, url, es5=False: added.append(url), raising=False)
+    monkeypatch.setitem(sys.modules, "homeassistant.components.http", http_mod)
+    monkeypatch.setitem(sys.modules, "homeassistant.components.frontend", frontend_mod)
+
+    async def reg(paths):
+        registered.extend(paths)
+    h, _ = make_hass()
+    h.http = types.SimpleNamespace(async_register_static_paths=reg)
+    run(init._register_dashboard_strategy(h))
+    assert len(registered) == 1 and registered[0].url_path == "/slimme_warmtepomp_frontend"
+    assert (Path(registered[0].path) / "slimme-warmtepomp-strategy.js").is_file()
+    assert added == [f"/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js?v={init.VERSION}"]
+
+
+def test_failing_dashboard_registration_never_breaks_the_integration(caplog):
+    init = importlib.import_module(PKG)
+    h, _ = make_hass()                     # no hass.http at all
+    run(init._register_dashboard_strategy(h))
+    assert any("dashboard strategy" in r.getMessage() for r in caplog.records)
+
+
+def test_setpoint_sensor_exposes_the_connected_sensors_for_the_dashboard(setup):
+    h, entry, c = setup
+    attrs = c.input_entities()
+    assert attrs["kamer"] == "sensor.room" and attrs["retour"] == "sensor.ret" and attrs["pomp_schakelaar"] == "switch.wp"
+    sp = next(e for p, e in h.entities if e.entity_id == "sensor.slimme_wp_setpoint")
+    assert sp.extra_state_attributes["invoer_sensoren"] == attrs

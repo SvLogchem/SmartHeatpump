@@ -8,7 +8,10 @@
     "@SvLogchem"
   ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
   "documentation": "https://github.com/SvLogchem/SmartHeatpump",
   "integration_type": "device",
   "iot_class": "calculated",
