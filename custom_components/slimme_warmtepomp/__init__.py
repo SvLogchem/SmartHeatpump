@@ -7,10 +7,10 @@ import voluptuous as vol
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN, SERVICE_RESET_MODEL
+from .const import CONF_COIL, DOMAIN, SERVICE_RESET_MODEL
 from .coordinator import SmartHeatpumpCoordinator
 from .engine.settings import REMOVED_NUMBER_KEYS
 
@@ -52,7 +52,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlimmeConfigEntry) -> bo
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _save_on_stop))
     # coil sensor: record every change so a defrost's peak is measured at full resolution
-    entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, coordinator.on_coil_event))
+    coil_entity = coordinator.cfg.get(CONF_COIL)
+    if coil_entity:
+        @callback
+        def _only_coil(data) -> bool:
+            return data.get("entity_id") == coil_entity
+
+        entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, coordinator.on_coil_event,
+                                                    event_filter=_only_coil))
     # entities restore their last values (numbers, switches, climate) while being added ...
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # ... so the first control cycle already runs with the user's settings.

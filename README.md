@@ -216,3 +216,12 @@ Attribuut `verwacht_setpoint` (sensor Setpoint): voor nu en elke 2 uur tot 12 uu
 
 ### Tabel toont ook het berekende setpoint (v2.15.1)
 In `vloer_setpoint_tabel` staat per kamerdoel naast `setpoint` (wat naar de pomp gaat, na de ondergrens "Laagste setpoint") nu ook `berekend`: wat de regeling zelf nodig vindt. Staat Laagste setpoint hoger dan het berekende setpoint, dan zie je dat meteen.
+
+### Reviewpunten opgelost (v2.15.2)
+- De coil-luisteraar draait nu als `@callback` in de hoofdlus, met een filter op alleen de coil-entiteit, en alleen als er een coil-sensor is ingesteld.
+- Vorstbeveiliging werkt ook als de kamer- of buitensensor wegvalt (buitensensor of retour is genoeg).
+- Thermostaat "Uit" zonder aan/uit-schakelaar zet het setpoint op het minimum in plaats van het laatste (hoge) setpoint te laten staan.
+- Opgeslagen onderdelen worden los hersteld: één beschadigd onderdeel wist het geleerde huismodel niet meer.
+- "Ontdooit te laat" telt de draaitijd van de compressor sinds de laatste ontdooi, niet de klokduur (geen valse melding na lange stilstand).
+- Een tapwaterrun blijft na een herstart bekend, zodat de maximale looptijd nog geldt en de schakelaar weer uitgaat.
+- In schaduwmodus komt geen valse melding "vorstbeveiliging heeft de pomp ingeschakeld" meer.

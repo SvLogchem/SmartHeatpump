@@ -81,7 +81,8 @@ class DhwController:
 
     def to_dict(self) -> dict:
         return {"last_legionella": self.last_legionella.isoformat() if self.last_legionella else None,
-                "timeouts": self.timeouts}
+                "timeouts": self.timeouts, "active": self.active, "mode": self.mode,
+                "started": self.started.isoformat() if self.started else None}
 
     def from_dict(self, d: dict) -> None:
         try:
@@ -90,3 +91,10 @@ class DhwController:
             self.timeouts = int(d.get("timeouts", 0))
         except (TypeError, ValueError):
             self.last_legionella = None
+        # a run that was busy at the restart must still be ended (maximum run time, target reached)
+        try:
+            st = d.get("started")
+            if d.get("active") and st:
+                self.active, self.mode, self.started = True, str(d.get("mode") or "normal"), datetime.fromisoformat(st)
+        except (TypeError, ValueError):
+            self.active, self.mode, self.started = False, "idle", None
