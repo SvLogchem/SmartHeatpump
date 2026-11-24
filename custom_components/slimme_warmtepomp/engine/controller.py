@@ -1046,10 +1046,11 @@ class SmartController:
             row = {}
             for r in rooms:
                 eq = self.model.floor_equilibrium(r, to, 0.0)
-                sp = _clamp(eq + self.trim_at(to), s["min_setpoint"], smax)
-                row[f"{r:.1f}"] = {"vloer": round(eq, 1), "setpoint": round(sp, 1)}
+                raw = eq + self.trim_at(to)
+                sp = _clamp(raw, s["min_setpoint"], smax)
+                row[f"{r:.1f}"] = {"vloer": round(eq, 1), "setpoint": round(sp, 1), "berekend": round(raw, 1)}
             main = row[f"{s['setpoint_dag']:.1f}"] if f"{s['setpoint_dag']:.1f}" in row else row[f"{rooms[1]:.1f}"]
-            out[str(to)] = {"vloer": main["vloer"], "setpoint": main["setpoint"], "kamer": row}
+            out[str(to)] = {"vloer": main["vloer"], "setpoint": main["setpoint"], "berekend": main["berekend"], "kamer": row}
         return out
 
     def _learned_curve(self, s: dict):
