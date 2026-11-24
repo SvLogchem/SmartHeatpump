@@ -17,7 +17,7 @@ from collections import deque
 from datetime import datetime, timedelta
 
 RISE_K = 6.0            # coil rise within RISE_S that marks the start of a defrost
-RISE_S = 100
+RISE_S = 150            # the integration samples every 2 minutes: a rise must also be seen across two samples
 EVENT_MIN = 5.0         # minutes after the start in which the peak is taken
 PRE_MIN = 12.0          # minutes before the start in which the minimum (ice load) is taken
 WEAK_PEAK = 15.0        # absolute: below this a defrost has not melted the ice

@@ -1059,6 +1059,16 @@ def test_warm_floor_keeps_the_frequency_limit_even_when_room_is_far_below_band()
     assert d.setpoint_raw <= 24.0 + 3.0
 
 
+def test_coil_tracker_detects_a_defrost_with_the_two_minute_sampling_of_the_integration():
+    from engine.coil import CoilTracker
+    tr = CoilTracker()
+    t = _t(0)
+    for i in range(8):                                  # drift, one sample every 2 minutes
+        tr.update(t, -5.0 + 0.1 * (i % 2), True); t += timedelta(minutes=2)
+    for v in (24.0, 38.0, 12.0, 2.0, -3.0, -4.0):       # the defrost rises ~30 K between two samples
+        tr.update(t, v, True); t += timedelta(minutes=2)
+    assert tr.last_peak == pytest.approx(38.0)
+
 def test_cold_floor_keeps_pump_running_softly_while_room_is_warm_from_the_slab():
     base = dict(outside=6.0, flow=27.0, ret=24.5, freq=30.0, settings={"setpoint_dag": 20.4}, room=21.0)
     cold = SmartController()                         # room 21.0 (over), but the floor already cooled far below need
