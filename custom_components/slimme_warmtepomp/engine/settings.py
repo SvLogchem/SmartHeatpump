@@ -63,6 +63,11 @@ NUMBER_SPECS: list[tuple] = [
     ("boost_pauze", "Slimme WP Boost Pauze Tussen Boosts", 15.0, 240.0, 5.0, "min", 60.0, "core"),
     ("pv_boost", "Slimme WP Zonnepanelen Boost", 0.0, 5.0, 0.5, "°C", 0.0, "core"),
     ("pv_drempel", "Slimme WP Zonnepanelen Drempel", 200.0, 8000.0, 100.0, "W", 1500.0, "core"),
+    # --- meerdere ruimtes (alleen als extra kamersensoren zijn ingesteld) ---
+    ("min_extra_kamer", "Slimme WP Minimale Temperatuur Bewaakte Ruimtes", 10.0, 22.0, 0.5, "°C", 17.0, "rooms"),
+    # --- meldingen (alleen als een meldingsdienst is ingesteld) ---
+    ("melding_te_koud_uren", "Slimme WP Melding Kamer Te Koud Na", 1.0, 12.0, 1.0, "h", 3.0, "notify"),
+    ("melding_te_koud_marge", "Slimme WP Melding Kamer Te Koud Marge", 0.5, 4.0, 0.5, "°C", 1.5, "notify"),
     # --- open ramen/deuren, aanwezigheid, netlimiet (optioneel) ---
     ("raam_vertraging", "Slimme WP Raam Open Vertraging", 1.0, 30.0, 1.0, "min", 5.0, "window"),
     ("afwezig_setpoint", "Slimme WP Setpoint Afwezig", 10.0, 20.0, 0.5, "°C", 17.0, "away"),
@@ -86,6 +91,7 @@ SWITCH_SPECS: list[tuple] = [
     ("kosten_vaste_prijs", "Slimme WP Kosten Met Vaste Prijs", True, "mdi:currency-eur", "core"),
     ("tekort_boost_actief", "Slimme WP Tekort Boost Actief", True, "mdi:rocket-launch", "core"),
     ("vorstbeveiliging_actief", "Slimme WP Vorstbeveiliging Actief", True, "mdi:snowflake-alert", "core"),
+    ("weekrapport_actief", "Slimme WP Weekrapport Versturen", True, "mdi:file-chart-outline", "notify"),
     ("dhw_actief", "Slimme WP Tapwatersturing Actief", True, "mdi:water-boiler", "dhw"),
 ]
 
@@ -94,3 +100,10 @@ SWITCH_DEFAULTS: dict[str, bool] = {s[0]: s[2] for s in SWITCH_SPECS}
 
 # Entities from v1 that no longer exist; their registry entries are removed on upgrade.
 REMOVED_NUMBER_KEYS = ("dag_start", "dag_eind")
+
+# Starting values per pump profile (chosen in the setup wizard). Only used for settings that have no stored value yet;
+# the controller learns the real behaviour of the pump afterwards.
+PROFILE_PRESETS: dict[str, dict[str, float]] = {
+    "alsavo": {},                                                      # the defaults above were tuned on an Alsavo/Midea inverter
+    "algemeen": {"pomp_start_verschil": 3.5, "pomp_stop_verschil": 3.5, "pomp_min_vermogen": 100.0},   # cautious for an unknown pump
+}

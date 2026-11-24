@@ -2,6 +2,8 @@
 
 # SmartHeatpump voor Home Assistant
 
+🇬🇧 **English version: [README.en.md](README.en.md)**
+
 Zelflerende regeling voor warmtepompen met vloerverwarming. Ontwikkeld voor een Alsavo-pomp via Tuya Local, maar bruikbaar voor elke pomp waarvan je de doeltemperatuur als `number` kunt instellen.
 
 ## Wat doet het
@@ -19,6 +21,68 @@ Zelflerende regeling voor warmtepompen met vloerverwarming. Ontwikkeld voor een 
 HACS > Custom repository > `https://github.com/SvLogchem/SmartHeatpump` > installeren > herstarten > Instellingen > Apparaten & diensten > Integratie toevoegen > *Slimme Warmtepomp*.
 
 Verplicht: kamer- en buitentemperatuur. Voor het leren heb je daarnaast de **retourtemperatuur** (of een vloersensor) en de **aanvoertemperatuur** nodig; de compressorfrequentie maakt het nauwkeuriger. Alles is later aan te passen via *Herconfigureren*.
+
+### Instelwizard (v2.18.0)
+
+Je vult niet alles in één scherm in, maar loopt in vijf korte stappen door de installatie. Bij *Herconfigureren* start dezelfde wizard met je huidige keuzes.
+
+1. **Installatie:** sturen op retour of aanvoer, stapgrootte, het **type warmtepomp** (*Alsavo/Tuya* of *Algemeen*, dat voorzichtiger start) en de **integratie van de pomp** (bijvoorbeeld `localtuya`). Met dat laatste worden de pompvelden gefilterd en worden de juiste sensoren voorgesteld; schakel het filter uit als je sensoren uit verschillende integraties haalt.
+2. **Ruimte en buiten:** hoofdruimte, eventueel **extra ruimtes** (zoveel als je wilt), buiten-, aanvoer-, retour- en vloersensor.
+3. **Warmtepomp:** frequentie, vermogen (of spanning en stroom), **zoveel doorstromingssensoren als je hebt**, coil en de eigen buitensensor van de pomp.
+4. **Aansturing:** de `number` voor de doeltemperatuur en de aan/uit-schakelaar. Laat je ze leeg, dan meet en leert de integratie alleen (schaduwmodus).
+5. **Extra's:** vink aan wat je wilt koppelen (weer en stroomprijs, zonnepanelen en net, ramen en deuren, aanwezigheid, warm tapwater, meldingen). Per aangevinkte keuze volgt één kort scherm; niet aangevinkt wordt overgeslagen. Ontvink je iets bij *Herconfigureren*, dan worden de bijbehorende koppelingen verwijderd.
+
+De velden zijn vooraf ingevuld als er een goede kandidaat is gevonden (op eenheid, apparaatklasse en naam: °C, Hz, W, l/min, …). Controleer ze even, het blijft een voorstel. Bestaande installaties worden automatisch omgezet (`flow_rate_sensor_1/2` worden één lijst `flow_rate_sensors`).
+
+### Meerdere ruimtes
+
+Alle ruimtes delen één waterkring, dus per ruimte stoken kan niet. Wat wel kan, is kiezen hoe de ruimtes meetellen (*Ruimte en buiten* → *Hoe worden meerdere ruimtes gebruikt?*):
+
+- **Hoofdruimte stuurt, extra ruimtes bewaken** (standaard): de regeling stuurt op de hoofdruimte. Wordt een extra ruimte kouder dan `Minimum Extra Ruimtes` (standaard 17 °C), dan ziet de regeling een tekort van gelijke grootte (maximaal 3 K), zodat er langer wordt gestookt tot ook die ruimte weer boven het minimum is.
+- **Gemiddelde:** het gemiddelde van alle ruimtes.
+- **Koudste:** de koudste ruimte bepaalt.
+
+Valt een sensor uit, dan blijft de regeling werken met de overige sensoren. Het dashboard toont de ruimtes en wat de regeling ervan maakt (attribuut `kamers` op *Berekend Setpoint*).
+
+### Sensorcontrole (Reparaties)
+
+De integratie bewaakt de sensoren die ze gebruikt en meldt een probleem onder *Instellingen → Systeem → Reparaties* (en als melding, als je die hebt ingesteld):
+
+- een sensor die al 30 minuten geen waarde heeft;
+- een sensor die al 6 uur niet is bijgewerkt;
+- een onwaarschijnlijke waarde (bijvoorbeeld 85 °C als kamertemperatuur) langer dan 10 minuten;
+- een buitentemperatuur die 2 uur lang 8 K of meer afwijkt van de buitensensor van de pomp zelf (zon op de sensor?).
+
+Een probleem verdwijnt vanzelf als de sensor weer klopt. De waakhond (`binary_sensor.slimme_wp_sensorprobleem`) bestaat daarnaast nog steeds.
+
+### Meldingen op je telefoon
+
+Kies bij *Extra's → Meldingen naar je telefoon* één of meer `notify`-diensten (bijvoorbeeld de Home Assistant-app). Je krijgt dan een bericht bij:
+
+- vorstbeveiliging die de pomp moest inschakelen;
+- ijsvorming (met de reden, in gewone taal);
+- **een kamer die te lang te koud blijft** (`Melding Kamer Te Koud Na`, standaard 3 uur, en `Melding Kamer Te Koud Marge`, standaard 1,5 °C onder het doel; niet in zomermodus of tijdens ontdooien, en bij afwezigheid geldt het afwezig-setpoint als doel);
+- sensorproblemen (hoogstens eens per dag per probleem);
+- het weekrapport (zie hieronder).
+
+De berichten volgen de taal van Home Assistant (Nederlands of Engels). Zonder gekozen dienst blijven de meldingen in Home Assistant zelf zoals voorheen.
+
+### Weekrapport
+
+Elke maandagochtend (vanaf 08:00) maakt de integratie een overzicht van de laatste 7 dagen: verbruik, kosten, COP, kWh per graaddag, draaitijd, ontdooicycli en het percentage van de tijd dat de kamer binnen de comfortband bleef. Het staat in `sensor.slimme_wp_weekrapport` (waarde: kWh, tekst in het attribuut `rapport`), op het dashboard onder *Kosten & analyse*, en wordt als melding gestuurd als je een dienst hebt gekozen. Het versturen zet je uit met `switch.slimme_wp_weekrapport_actief` (die bestaat zodra je een meldingsdienst hebt gekozen).
+
+### Exporteren en importeren
+
+Voor een nieuwe installatie, een reservekopie of om je instellingen te delen:
+
+- `slimme_warmtepomp.exporteer` schrijft alle instellingen, schakelaars en (optioneel, `leerstatus`) het geleerde model, de frequentietabel en de stooklijn naar `slimme_warmtepomp_export.json` in je configuratiemap, en geeft ze ook als antwoord terug.
+- `slimme_warmtepomp.importeer` leest dat bestand (of de meegegeven `data`) en past alles toe. Waarden worden binnen de toegestane grenzen gehouden; wat niet kon, staat in het antwoord. Het geleerde model hoef je niet mee te nemen (`leerstatus: false`) als je alleen de instellingen van een ander wilt overnemen.
+
+Je sensor-koppelingen zitten er bewust niet in: die horen bij jouw installatie.
+
+### Talen
+
+Het is volledig tweetalig: Nederlands en Engels (voor elke andere taal van Home Assistant). Dat geldt voor de wizard, de Reparaties, de meldingen, de diensten, het dashboard en de **weergavenamen** van de entiteiten (*Slimme WP Setpoint Dag* of *Smart HP Setpoint Day*). De entiteit-ID's blijven in alle talen gelijk (`number.slimme_wp_setpoint_dag`), dus automatiseringen en dashboards werken hetzelfde. Een naam die je zelf in Home Assistant hebt aangepast blijft zoals jij hem gezet hebt.
 
 ## Aanbevolen instelling voor "vloer warm om 21:00"
 
@@ -204,7 +268,7 @@ Tabbladen: **Overzicht** (status, regelingschakelaars, wat de regeling nu doet, 
 - Schakelaars om onderdelen uit te zetten: *Regeling*, *Leren*, *Voorverwarmen*, *Prijssturing*, *Tapwatersturing*.
 - **Schaduwmodus:** staat *Regeling Actief* uit, dan wordt alles nog steeds berekend en getoond (setpoint, plan, leren), maar er gaat niets naar de warmtepomp of de schakelaar.
 - Thermostaatstatus: *Verwarmen* (compressor draait), *Circuleren* (pomp aan, compressor staat stil), *Stand-by* (de regeling heeft de pomp uitgezet), *Uit*.
-- Dienst `slimme_warmtepomp.reset_model` wist het geleerde model.
+- Dienst `slimme_warmtepomp.reset_model` wist het geleerde model; `exporteer` en `importeer` zie *Exporteren en importeren*.
 
 ## Upgraden van v1
 
@@ -222,6 +286,10 @@ Alle bestaande entiteiten behouden hun id en unique id, instellingen blijven bew
 - Het model is een twee-knoops model (vloer + kamer) met retour- of vloertemperatuur als vloerproxy. Bij een zeer zware dekvloer met koude avonden kan de regeling doorschieten; zet dan `Tolerantie Te Warm` lager of gebruik een echte vloersensor.
 - De prijsvoorspelling wordt herkend aan de vorm van de attributen; controleer in de attributen van *Berekend Setpoint* of er een voorspelling wordt gebruikt.
 - Getest met een gesimuleerd huis (zie `tests/`) en met een nagebootste Home Assistant-omgeving; nog niet in een echte installatie.
+
+## Licentie
+
+MIT, zie [LICENSE](LICENSE).
 
 ## Tests
 
@@ -302,3 +370,10 @@ Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven)
 - Debug-logregel bij elke wijziging van reden, setpoint of schakelaar (zet `logger: custom_components.slimme_warmtepomp: debug`).
 - Nieuw: kant-en-klaar dashboard als dashboard-strategie (zie *Kant-en-klaar dashboard*), samen met de sensor-attributen `invoer_sensoren` waarmee het jouw eigen sensoren vindt.
 - CI: tests draaien bij elke push/pull request, een release wordt alleen gemaakt als de tests slagen; HACS- en hassfest-controles toegevoegd.
+
+### Wizard, meerdere ruimtes, sensorcontrole, meldingen en Engels (v2.18.0)
+- Nieuw: installatie in stappen (installatie → ruimte en buiten → pomp → aansturing → extra's) met voorstellen per sensor op eenheid en naam, een keuze voor de integratie van de pomp en het pomptype (*Alsavo/Tuya* of *Algemeen*). *Herconfigureren* gebruikt dezelfde wizard.
+- Nieuw: meerdere kamersensoren (hoofdruimte stuurt en extra ruimtes bewaken een minimum, of gemiddelde of koudste) en een willekeurig aantal doorstromingssensoren. Bestaande instellingen worden automatisch omgezet.
+- Nieuw: sensorcontrole via *Reparaties*, meldingen naar je telefoon (vorst, ijs, te koude kamer, sensorproblemen), een weekrapport, en de diensten `exporteer` en `importeer` voor instellingen en geleerde gegevens.
+- Nieuw: volledig Engelse versie (README.en.md, wizard, meldingen, diensten, dashboard en entiteitnamen volgen de taal van Home Assistant; de entiteit-ID's blijven gelijk).
+- Het dashboard toont de ruimtes, alle doorstromingssensoren en het weekrapport.

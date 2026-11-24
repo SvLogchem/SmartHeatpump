@@ -48,5 +48,5 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(
         SlimmeWarmtepompSwitch(coordinator, key, name, default, icon)
         for key, name, default, icon, group in SWITCH_SPECS
-        if group == "core" or coordinator.has_dhw
+        if coordinator.group_enabled(group)
     )
