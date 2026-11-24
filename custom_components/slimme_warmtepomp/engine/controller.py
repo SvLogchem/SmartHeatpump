@@ -725,6 +725,16 @@ class SmartController:
             "start_voorverwarmen": pl.start.isoformat() if pl.start else None,
         })
 
+        # expected setpoint for the coming hours, from the weather forecast and the sun (what the plan builds on)
+        if use_learned and f_known:
+            fut = []
+            for hh in (0, 2, 4, 6, 8, 10, 12):
+                tt = now + timedelta(hours=hh)
+                to_f, sun_f, sp_f = to_fn(tt), sun_fn(tt), sp_at(tt)
+                fut.append({"tijd": tt.strftime("%H:%M"), "buiten": round(to_f, 1), "kamerdoel": round(sp_f, 1),
+                            "vloer": round(self.model.floor_equilibrium(sp_f, to_f, sun_f) + self.trim_at(to_f), 1),
+                            "setpoint": round(s_base(tt, to_f, sun_f, sp_f), 1)})
+            d.diag["verwacht_setpoint"] = fut
         # ---- decide run / coast (with minimum run and standstill times)
         in_quiet = quiet_fn(now)
         start_kick = heat_floor = False
@@ -1021,10 +1031,16 @@ class SmartController:
         if self.model.confidence() < 0.5 or not self.model.plausible():
             return None
         out = {}
+        smax = max(s["max_flow_temp"], s["min_setpoint"] + 1.0)
+        rooms = [round(s["setpoint_dag"] + dk, 1) for dk in (-0.4, 0.0, 0.6)]
         for to in (-5, 0, 5, 10, 15):
-            eq = self.model.floor_equilibrium(s["setpoint_dag"], to, 0.0)
-            sp = _clamp(eq + self.trim_at(to), s["min_setpoint"], max(s["max_flow_temp"], s["min_setpoint"] + 1.0))
-            out[str(to)] = {"vloer": round(eq, 1), "setpoint": round(sp, 1)}
+            row = {}
+            for r in rooms:
+                eq = self.model.floor_equilibrium(r, to, 0.0)
+                sp = _clamp(eq + self.trim_at(to), s["min_setpoint"], smax)
+                row[f"{r:.1f}"] = {"vloer": round(eq, 1), "setpoint": round(sp, 1)}
+            main = row[f"{s['setpoint_dag']:.1f}"] if f"{s['setpoint_dag']:.1f}" in row else row[f"{rooms[1]:.1f}"]
+            out[str(to)] = {"vloer": main["vloer"], "setpoint": main["setpoint"], "kamer": row}
         return out
 
     def _learned_curve(self, s: dict):
