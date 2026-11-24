@@ -213,3 +213,6 @@ Attribuut `verwacht_setpoint` (sensor Setpoint): voor nu en elke 2 uur tot 12 uu
 ### Coil per seconde en plan zichtbaar tijdens ontdooien (v2.15.0)
 - Elke wijziging van de coil-sensor wordt tussen twee regelrondes bewaard (event-gedreven). De ontdooipiek is daardoor de echte hoogste waarde van de ontdooi, niet wat de 2-minuten-meting toevallig zag.
 - Tijdens ontdooien (en tapwater) blijven Plan, Verwacht buiten, Kamer na bedtijd, Verwachte afkoeling enz. de laatst berekende waarde tonen in plaats van "onbekend".
+
+### Tabel toont ook het berekende setpoint (v2.15.1)
+In `vloer_setpoint_tabel` staat per kamerdoel naast `setpoint` (wat naar de pomp gaat, na de ondergrens "Laagste setpoint") nu ook `berekend`: wat de regeling zelf nodig vindt. Staat Laagste setpoint hoger dan het berekende setpoint, dan zie je dat meteen.
