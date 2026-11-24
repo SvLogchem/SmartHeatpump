@@ -267,12 +267,14 @@ class SmartController:
         """Relearn ``fraction`` (0..1) of the house model, evening correction, curve trim and integrator."""
         if fraction >= 0.999:
             self.model.reset()
+            self.mod.reset()
             self.tracker = EveningTracker()
             self.pi_i = 0.0
             self.trim = {}
         else:
             keep = max(0.0, 1.0 - fraction)
             self.model.shrink(keep)
+            self.mod.shrink(keep)
             self.tracker.bias *= keep
             self.pi_i *= keep
             self.trim = {k: v * keep for k, v in self.trim.items()}
@@ -675,15 +677,19 @@ class SmartController:
             bedtime += timedelta(days=1)
 
         # ---- frequency limit: translate max Hz (day / quiet hours) into a max gap above the return temp
-        def gap_cap_fn(t):
-            if not inp.modulation_enabled:
-                return None
+        def fmax_fn(t):
             fmax = s["max_freq_stil"] if quiet_fn(t) else s["max_freq_dag"]
             # Normal running stays at the efficient boost frequency: a setpoint far above what the pump can reach
             # (history: 38-40 C at 0 C outside, 70 Hz for hours, never back to 30 Hz) only wastes energy. Only a
             # room that is already below its comfort band may use the full frequency range.
             if fmax > 0 and s["boost_freq"] > 0 and tr >= sp_now - s["tolerantie_laag"]:
                 fmax = min(fmax, s["boost_freq"])
+            return fmax
+
+        def gap_cap_fn(t):
+            if not inp.modulation_enabled:
+                return None
+            fmax = fmax_fn(t)
             return self.mod.gap_cap(fmax) if fmax > 0 else None
 
         # ---- plan
@@ -798,7 +804,14 @@ class SmartController:
                 base_now = s_base(now, to_now, sun_fn(now), sp_now)     # the integrator may not bypass the Hz limit
                 # the house base level may exceed the frequency limit by 2 K at most: a base the pump cannot reach
                 # (history: 38 C at 0 C outside) must not keep it at 70 Hz while "frequentie begrensd" is on
-                limited = max(min(base_now, inp.ret + cap + 2.0), inp.ret + cap)
+                # The pump's own controller keeps ramping up while the gap stays positive, so a table value alone
+                # does not hold the limit: while the frequency is above it, tighten the gap by 0.15 K per Hz.
+                fm = fmax_fn(now)
+                over_hz = max(0.0, (inp.freq or 0.0) - fm) if fm > 0 else 0.0
+                cap_eff = max(0.3, cap - 0.15 * over_hz)
+                limited = max(min(base_now, inp.ret + cap_eff + 2.0), inp.ret + cap_eff)
+                if over_hz > 0:
+                    limited = inp.ret + cap_eff
                 if raw > limited:
                     raw, d.freq_limited = limited, True
             # Minimum heating setpoint (user setting): while the room is below target the water is brought up to
@@ -967,6 +980,7 @@ class SmartController:
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
             "geleerde_stooklijn": self._learned_curve(s),
+            "vloer_setpoint_tabel": self._floor_table(s),
             "ontdooien": self.defl.summary(),
             "ijsvorming": self.ice.summary(),
             "vorstbeveiliging": self.frost_reason,
@@ -979,6 +993,18 @@ class SmartController:
             "modulatie_frequentie_op_minimum": self.mod.freq_at_floor(),
             "frequentie_tabel": self.mod.table() or None,
         }
+
+    def _floor_table(self, s: dict):
+        """Per outdoor temperature: the floor (return) temperature that holds the room at the day setpoint and the
+        pump setpoint that goes with it (learned floor + curve trim, within the pump limits)."""
+        if self.model.confidence() < 0.5 or not self.model.plausible():
+            return None
+        out = {}
+        for to in (-5, 0, 5, 10, 15):
+            eq = self.model.floor_equilibrium(s["setpoint_dag"], to, 0.0)
+            sp = _clamp(eq + self.trim_at(to), s["min_setpoint"], max(s["max_flow_temp"], s["min_setpoint"] + 1.0))
+            out[str(to)] = {"vloer": round(eq, 1), "setpoint": round(sp, 1)}
+        return out
 
     def _learned_curve(self, s: dict):
         """Setpoint the model would use at a few outdoor temperatures (sp=day, no sun)."""

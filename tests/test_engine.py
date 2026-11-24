@@ -1028,3 +1028,23 @@ def test_planner_may_not_coast_while_room_is_below_comfort_band():
     for i in range(12):
         d = c.step(_inp(t + timedelta(minutes=10 * i), room=19.6, ret=22.0, outside=9.0, switch_state="on"))
     assert d.reason != "uitlopen"
+
+
+def test_frequency_table_is_monotonic_and_relearn_shrinks_it():
+    from engine.modulation import ModulationLearner
+    m = ModulationLearner()
+    for _ in range(12):
+        m.observe(2.0, True, 54.0, 3.0); m.observe(3.5, True, 50.0, 3.5); m.observe(8.0, True, 70.0, 6.0)
+    freqs = [f for _, f, _ in m.trusted()]
+    assert freqs == sorted(freqs)               # a larger gap never shows a lower frequency
+    m.shrink(0.5)
+    assert m.table() == {} or all(v > 0 for v in m.table().values())
+    m.shrink(0.0)
+    assert m.table() == {}
+
+
+def test_floor_table_is_published_per_outdoor_temperature():
+    c = SmartController(); _fill(c)
+    d = c.step(_inp(_t(0), room=21.0))
+    t = d.diag.get("vloer_setpoint_tabel")
+    assert t is None or (set(t) == {"-5", "0", "5", "10", "15"} and t["0"]["setpoint"] >= DEFAULTS["min_setpoint"])
