@@ -105,25 +105,43 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         data = await self._store.async_load()
         if isinstance(data, dict):
             self.controller.import_state(data)
-            self._week_sent = (data.get("coordinator") or {}).get("week_sent")
+            saved = data.get("coordinator") or {}
+            self._week_sent = saved.get("week_sent")
+            # when each message was last sent: without it every restart during frost or a sensor problem sends it again
+            for kind, stamp in (saved.get("notified") or {}).items():
+                try:
+                    when = datetime.fromisoformat(stamp)
+                except (TypeError, ValueError):
+                    continue
+                if when.tzinfo is not None:
+                    self._notified[str(kind)] = when
 
     async def async_save(self) -> None:
-        await self._store.async_save({**self.controller.export_state(), "coordinator": {"week_sent": self._week_sent}})
+        recent = dt_util.utcnow() - timedelta(days=7)
+        notified = {k: v.isoformat() for k, v in self._notified.items() if v >= recent}
+        await self._store.async_save({**self.controller.export_state(), "coordinator": {
+            "week_sent": self._week_sent, "notified": notified}})
         self._saved_at = dt_util.utcnow()
 
     # ------------------------------------------------------------------ export / import
     EXPORT_MARK = "slimme_warmtepomp_export"
 
-    def export_bundle(self, include_state: bool = True) -> dict:
-        """Settings, switches and (optionally) the learned state: to back up or to share with someone who has the same pump."""
+    def export_bundle(self, pump: bool = True, house: bool = False) -> dict:
+        """Settings, switches and (optionally) learned knowledge, to back up or to share.
+
+        pump  = knowledge about the heat pump itself (frequency table, defrost behaviour): useful for anyone with the
+                same pump.
+        house = knowledge about this house (cooling time, floor, heating curve, statistics): only for a backup of
+                your own installation; on someone else's house it would control wrongly until it is unlearned."""
         bundle = {self.EXPORT_MARK: 1, "versie": VERSION, "instellingen": {k: v for k, v in self.settings.items() if k in DEFAULTS},
-                  "schakelaars": dict(self.switches)}
-        if include_state:
-            bundle["leerstatus"] = self.controller.export_state()
+                  "schakelaars": dict(self.switches), "kennis": {"pomp": bool(pump), "huis": bool(house)}}
+        if pump or house:
+            bundle["leerstatus"] = self.controller.export_state(pump=bool(pump), house=bool(house))
         return bundle
 
-    async def import_bundle(self, bundle: dict, include_state: bool = True) -> dict:
-        """Apply an export; unknown or invalid entries are skipped and reported."""
+    async def import_bundle(self, bundle: dict, pump: bool = True, house: bool = False) -> dict:
+        """Apply an export; unknown or invalid entries are skipped and reported. The learned knowledge is only taken
+        over for the parts that are both asked for and present in the export."""
         if not isinstance(bundle, dict) or bundle.get(self.EXPORT_MARK) != 1:
             raise HomeAssistantError("Not an export of Slimme Warmtepomp")
         ranges = {s[0]: (s[2], s[3]) for s in NUMBER_SPECS}
@@ -141,14 +159,18 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
                 applied += 1
             else:
                 skipped.append(key)
-        learned = False
-        if include_state and isinstance(bundle.get("leerstatus"), dict):
+        present = bundle.get("kennis") if isinstance(bundle.get("kennis"), dict) else {"pomp": True, "huis": True}  # older exports: all
+        take_pump = bool(pump and present.get("pomp"))
+        take_house = bool(house and present.get("huis"))
+        if isinstance(bundle.get("leerstatus"), dict) and (take_pump or take_house):
             async with self._lock:
-                self.controller.import_state(bundle["leerstatus"])
-            learned = True
+                self.controller.import_state(bundle["leerstatus"], pump=take_pump, house=take_house)
+        else:
+            take_pump = take_house = False
         await self.async_save()
         await self.async_request_refresh()
-        return {"toegepast": applied, "overgeslagen": skipped, "leerstatus": learned}
+        return {"toegepast": applied, "overgeslagen": skipped, "pompkennis": take_pump, "huiskennis": take_house,
+                "leerstatus": take_pump or take_house}
 
     async def async_reset_model(self, percentage: float = 100.0) -> None:
         async with self._lock:
@@ -334,7 +356,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
 
         return Inputs(
             now=now,
-            room=room, outside=outside,
+            room=room, room_deficit=float(self.rooms_info.get("tekort_bewaakt") or 0.0), outside=outside,
             unit_outside=self._num(cfg.get(CONF_UNIT_OUTSIDE)),
             coil_temp=self._num(cfg.get(CONF_COIL)), coil_samples=self._take_coil_samples(),
             flow=self._num(cfg.get(CONF_FLOW)), ret=self._num(cfg.get(CONF_RETURN)),
@@ -453,6 +475,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         """The room stays colder than wanted for hours: tell the person (the control may be stuck on something)."""
         s = self.settings
         too_cold = (inp.room is not None and self.hvac_on and not decision.summer and not decision.defrost
+                    and not decision.window_open      # an open window pauses the heating on purpose: not a fault
                     and inp.room < decision.room_setpoint - s.get("melding_te_koud_marge", 1.5))
         if not too_cold:
             self._cold_since = None
@@ -467,20 +490,24 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
     # ------------------------------------------------------------------ sensor health (Repairs page)
     def _health_readings(self, now) -> dict:
         cfg, out = self.cfg, {}
-        for role, key in (("kamer", CONF_ROOM), ("buiten", CONF_OUTSIDE), ("aanvoer", CONF_FLOW), ("retour", CONF_RETURN),
-                          ("vloer", CONF_FLOOR), ("frequentie", CONF_FREQ), ("vermogen", CONF_POWER),
-                          ("pomp_setpoint", CONF_TARGET), ("pomp_schakelaar", CONF_SWITCH)):
-            ent = cfg.get(key)
-            if not ent:
-                continue
+
+        def read(role: str, ent: str) -> None:
             st = self._state(ent)
             if st is None:
                 out[role] = {"entity": ent, "state": "unavailable", "value": None, "age_h": None}
-                continue
+                return
             stamp = getattr(st, "last_reported", None) or getattr(st, "last_updated", None)
             age = (now - stamp).total_seconds() / 3600.0 if stamp is not None and hasattr(stamp, "tzinfo") else None
             out[role] = {"entity": ent, "state": st.state,
                          "value": self._watts(ent) if role == "vermogen" else self._num(ent), "age_h": age}
+
+        for role, key in (("kamer", CONF_ROOM), ("buiten", CONF_OUTSIDE), ("aanvoer", CONF_FLOW), ("retour", CONF_RETURN),
+                          ("vloer", CONF_FLOOR), ("frequentie", CONF_FREQ), ("vermogen", CONF_POWER),
+                          ("pomp_setpoint", CONF_TARGET), ("pomp_schakelaar", CONF_SWITCH)):
+            if cfg.get(key):
+                read(role, cfg[key])
+        for i, ent in enumerate(self.extra_room_entities(), 2):      # the extra rooms are part of the check too
+            read(f"kamer_{i}", ent)
         return out
 
     async def _check_health(self, now) -> None:

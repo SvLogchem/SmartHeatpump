@@ -5,6 +5,7 @@ cleared again as soon as the reading is fine, so the Repairs page of Home Assist
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
@@ -19,8 +20,20 @@ LIMITS = {
     "kamer": (0.0, 40.0), "buiten": (-40.0, 50.0), "aanvoer": (-5.0, 80.0), "retour": (-5.0, 80.0),
     "vloer": (0.0, 50.0), "frequentie": (0.0, 150.0), "vermogen": (0.0, 40000.0),
 }
-LIVE = ("kamer", "buiten", "aanvoer", "retour", "vloer", "frequentie", "vermogen")
+# Roles that must keep reporting. Many sensors only report when the value changes, so some of them may legitimately be
+# silent for hours: the compressor frequency (steady at one value for hours) and everything about the pump itself
+# while it stands still (0 Hz, 0 W, water at room temperature). Those are only checked while the pump runs, and
+# the frequency never (its problems still show up as "unavailable" or "implausible").
+LIVE = ("kamer", "buiten", "aanvoer", "retour", "vloer", "vermogen")
+LIVE_ONLY_WHILE_RUNNING = ("aanvoer", "retour", "vloer", "vermogen")
 BAD = ("unknown", "unavailable", "none", "")
+RUNNING_HZ = 1.0
+RUNNING_W = 30.0
+
+
+def base_role(role: str) -> str:
+    """"kamer_2" (an extra room) is checked like "kamer"."""
+    return re.sub(r"_\d+$", "", role)
 
 
 class Problem(NamedTuple):
@@ -45,15 +58,20 @@ class SensorHealth:
     def check(self, now: datetime, readings: dict[str, dict], unit_outside: float | None = None) -> list[Problem]:
         """readings: role -> {"entity", "state" (str), "value" (float|None), "age_h" (float|None)}."""
         out: list[Problem] = []
+        hz = readings.get("frequentie", {}).get("value")
+        watt = readings.get("vermogen", {}).get("value")
+        running = bool((hz is not None and hz >= RUNNING_HZ) or (watt is not None and watt >= RUNNING_W))
         for role, r in readings.items():
             ent, state, val, age = r.get("entity"), str(r.get("state", "")).lower(), r.get("value"), r.get("age_h")
+            base = base_role(role)
             gone = state in BAD
             if self._held(f"unavailable_{role}", gone, now, UNAVAILABLE_AFTER):
                 out.append(Problem(f"unavailable_{role}", "unavailable", role, ent, {}))
-            stale = (not gone) and role in LIVE and age is not None and age >= STALE_HOURS
+            stale = ((not gone) and base in LIVE and age is not None and age >= STALE_HOURS
+                     and (running or base not in LIVE_ONLY_WHILE_RUNNING))
             if self._held(f"stale_{role}", stale, now, timedelta(0)):
                 out.append(Problem(f"stale_{role}", "stale", role, ent, {"hours": age}))
-            lim = LIMITS.get(role)
+            lim = LIMITS.get(base)
             bad_val = (not gone) and lim is not None and val is not None and not (lim[0] <= val <= lim[1])
             if self._held(f"implausible_{role}", bad_val, now, IMPLAUSIBLE_AFTER):
                 out.append(Problem(f"implausible_{role}", "implausible", role, ent, {"value": val}))

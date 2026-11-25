@@ -1297,9 +1297,9 @@ def test_rooms_main_room_leads_and_guard_rooms_only_have_a_minimum():
     v, info = combine(21.0, [("sensor.slaapkamer", 18.0)], "hoofd", 17.0)
     assert v == 21.0 and info["tekort_bewaakt"] == 0.0              # guard room above its minimum: the main room decides
     v, info = combine(21.0, [("sensor.slaapkamer", 15.5)], "hoofd", 17.0)
-    assert v == pytest.approx(19.5)                                  # 1.5 K under its minimum -> the controller sees 1.5 K less
-    v, _ = combine(21.0, [("a", 10.0)], "hoofd", 17.0)
-    assert v == pytest.approx(18.0)                                  # capped at 3 K: one cold room cannot run the house wild
+    assert v == 21.0 and info["tekort_bewaakt"] == pytest.approx(1.5)   # the main room keeps its real temperature; the shortfall is reported apart
+    v, info = combine(21.0, [("a", 10.0)], "hoofd", 17.0)
+    assert v == 21.0 and info["tekort_bewaakt"] == pytest.approx(3.0)   # capped at 3 K: one cold room cannot run the house wild
 
 
 def test_rooms_average_and_coldest():
@@ -1310,7 +1310,8 @@ def test_rooms_average_and_coldest():
 
 def test_rooms_survive_a_dropped_sensor():
     from engine.rooms import combine
-    assert combine(None, [("a", 19.0), ("b", 20.0)], "hoofd", 17.0)[0] == pytest.approx(19.5)     # main room gone
+    for mode in ("hoofd", "gemiddelde", "koudste"):                    # main room gone: the others must not take its place
+        assert combine(None, [("a", 18.0), ("b", 19.0)], mode, 17.0)[0] is None
     assert combine(21.0, [("a", None)], "koudste", 17.0)[0] == 21.0                                 # guard room gone
     assert combine(None, [("a", None)], "gemiddelde", 17.0)[0] is None
     assert combine(20.5, [], "koudste", 17.0)[0] == 20.5                                            # no extra rooms: unchanged
@@ -1441,3 +1442,71 @@ def test_suggestions_without_a_chosen_integration_and_with_nothing_to_find():
     s = suggest(_cands())
     assert s["retour"] == "sensor.warmtepomp_retour_temp"
     assert suggest([]) == {} and suggest([Candidate("sensor.x", "Iets", "lux")]) == {}
+
+
+# ---------- v2.18.1: review points ----------
+
+def test_shadow_mode_is_respected_when_the_room_sensor_is_missing_during_frost():
+    c = SmartController()
+    d = c.step(_inp(_t(0), room=None, outside=-4.0, ret=6.0, switch_state="off", hvac_on=False, regeling_actief=False))
+    assert d.sensor_problem and d.shadow and d.frost
+    assert d.switch is None and not d.frost_forced                      # computed and visible, but nothing is sent
+
+
+def test_a_cold_guard_room_asks_for_heat_without_teaching_the_house_model():
+    ref, guard = SmartController(), SmartController()
+    for m in range(0, 40, 2):
+        kw = dict(room=20.5, floor=22.0, ret=24.0, freq=40.0, flow=28.0, switch_state="on")
+        d_ref = ref.step(_inp(_t(m), **kw))
+        d_guard = guard.step(_inp(_t(m), room_deficit=2.0, **kw))
+    assert d_guard.setpoint_raw > d_ref.setpoint_raw                    # the shortfall is extra heat demand
+    # ... but everything that is learned or predicted still sees the real temperature of the main room
+    assert guard._win and guard._win[-1][1] == 20.5 and guard._tr_win[-1][1] == 20.5
+    assert guard.tracker.bias == pytest.approx(ref.tracker.bias)
+    assert guard.model.to_dict() == ref.model.to_dict()
+    assert guard.f_est == pytest.approx(ref.f_est)
+
+
+def test_health_does_not_cry_wolf_about_a_steady_frequency_or_a_pump_that_stands_still():
+    from engine.health import SensorHealth
+    h = SensorHealth()
+    quiet = _readings(frequentie={"entity": "sensor.hz", "state": "0", "value": 0.0, "age_h": 9.0},
+                      vermogen={"entity": "sensor.w", "state": "0", "value": 0.0, "age_h": 9.0},
+                      retour={"entity": "sensor.ret", "state": "21", "value": 21.0, "age_h": 9.0})
+    assert h.check(_t(0), quiet) == []                                           # pump off for 9 h: nothing is wrong
+    steady = _readings(frequentie={"entity": "sensor.hz", "state": "70", "value": 70.0, "age_h": 9.0},
+                       vermogen={"entity": "sensor.w", "state": "2400", "value": 2400.0, "age_h": 0.1})
+    assert h.check(_t(0), steady) == []                                          # the frequency may stay on 70 Hz for hours
+    frozen = _readings(frequentie={"entity": "sensor.hz", "state": "50", "value": 50.0, "age_h": 0.1},
+                       vermogen={"entity": "sensor.w", "state": "1500", "value": 1500.0, "age_h": 8.0})
+    assert [p.key for p in h.check(_t(0), frozen)] == ["stale_vermogen"]         # a power meter that froze while running is real
+    dead_room = _readings(kamer={"entity": "sensor.room", "state": "20", "value": 20.0, "age_h": 8.0})
+    assert [p.key for p in h.check(_t(0), dead_room)] == ["stale_kamer"]         # a room sensor must always keep reporting
+
+
+def test_health_checks_the_extra_rooms_too():
+    from engine.health import SensorHealth
+    from engine.i18n import role_name
+    h = SensorHealth()
+    r = _readings(kamer_2={"entity": "sensor.slaap", "state": "unavailable", "value": None, "age_h": None},
+                  kamer_3={"entity": "sensor.baby", "state": "55", "value": 55.0, "age_h": 0.1})
+    assert h.check(_t(0), r) == []
+    pr = h.check(_t(31), r)
+    assert sorted(p.key for p in pr) == ["implausible_kamer_3", "unavailable_kamer_2"]
+    assert role_name("nl", "kamer_2") == "kamertemperatuur 2" and role_name("en", "kamer_3") == "room temperature 3"
+    assert role_name("nl", "pomp_setpoint") == "setpoint van de pomp"
+
+
+def test_next_defrost_counts_compressor_run_time_not_the_clock():
+    from engine.defrost import DefrostLearner
+    t0 = datetime(2026, 11, 12, 6, 0, tzinfo=TZ)
+    dl = DefrostLearner()
+    dl.n, dl.interval, dl.last_start = 5, 54.0, t0
+    assert dl.minutes_until_next(t0 + timedelta(hours=4)) == pytest.approx(54.0 - 240.0)        # clock: "overdue" after a standstill
+    assert dl.minutes_until_next(t0 + timedelta(hours=4), run_min=10.0) == pytest.approx(44.0)  # run time: still 44 minutes to go
+    # the interval is learned from run time too: a 7-hour clock gap with 50 minutes of running is a 50-minute interval
+    dl2 = DefrostLearner()
+    dl2.update(t0, True, None, True)
+    dl2.update(t0 + timedelta(minutes=3), False, 4.0, True)
+    dl2.update(t0 + timedelta(hours=7), True, None, True, run_min=50.0)
+    assert dl2.interval == pytest.approx(50.0)
