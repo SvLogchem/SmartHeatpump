@@ -51,6 +51,7 @@ class Inputs:
     now: datetime
     room: float | None
     outside: float | None
+    room_deficit: float = 0.0            # shortfall of a guard room (K): extra heat demand only, never part of the learning
     flow: float | None = None
     ret: float | None = None
     floor: float | None = None
@@ -229,6 +230,7 @@ class SmartController:
         self._last_heating = False
         self._plan_diag: dict = {}
         self._run_min = 0.0
+        self._run_tracked = False     # run minutes only count once this process has seen a defrost start (not after a restart)
         self._floor_hold = False
         self._tr_rate = 0.0
         self._e_ema = 0.0
@@ -293,16 +295,24 @@ class SmartController:
         self._win = []
 
     # ----------------------------------------------------------- persistence
-    def export_state(self) -> dict:
-        return {
-            "model": self.model.to_dict(), "tracker": self.tracker.to_dict(),
-            "prices": self.prices.to_dict(), "mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "ice": self.ice.to_dict(), "coil": self.coil.to_dict(), "usage": self.usage.to_dict(), "dhw": self.dhw.to_dict(),
-            "pi_i": self.pi_i, "trim": {str(k): round(v, 3) for k, v in self.trim.items()}, "summer_mean": self.summer_mean, "summer": self.summer,
-            "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
-            "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
-        }
+    def export_state(self, pump: bool = True, house: bool = True) -> dict:
+        """The learned state. ``pump`` = what belongs to the heat pump (frequency table, defrost, coil): fine to share
+        with someone who has the same pump. ``house`` = everything that belongs to this house and installation."""
+        out: dict = {}
+        if pump:
+            out.update({"mod": self.mod.to_dict(), "defl": self.defl.to_dict(), "coil": self.coil.to_dict()})
+        if house:
+            out.update({
+                "model": self.model.to_dict(), "tracker": self.tracker.to_dict(), "prices": self.prices.to_dict(),
+                "ice": self.ice.to_dict(), "usage": self.usage.to_dict(), "dhw": self.dhw.to_dict(),
+                "pi_i": self.pi_i, "trim": {str(k): round(v, 3) for k, v in self.trim.items()},
+                "summer_mean": self.summer_mean, "summer": self.summer,
+                "dT_sup": self.dT_sup, "energy_th": self.energy_th, "energy_el": self.energy_el,
+                "day_key": self.day_key, "today": self.today, "yesterday": self.yesterday,
+            })
+        return out
 
-    def import_state(self, d: dict) -> None:
+    def import_state(self, d: dict, pump: bool = True, house: bool = True) -> None:
         if not d:
             return
         # each part is restored on its own: one damaged part must not wipe the learned house model (or the rest)
@@ -312,35 +322,37 @@ class SmartController:
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
 
-        try:
-            self.model.from_dict(d.get("model", {}))
-        except (TypeError, ValueError, AttributeError, KeyError):
-            self.model.reset()          # a corrupted model starts fresh
-        part(lambda: self.tracker.from_dict(d.get("tracker", {})))
-        part(lambda: self.prices.from_dict(d.get("prices", {})))
-        part(lambda: self.dhw.from_dict(d.get("dhw", {})))
-        part(lambda: self.mod.from_dict(d.get("mod", {})))
-        part(lambda: self.defl.from_dict(d.get("defl", {})))
-        part(lambda: self.ice.from_dict(d.get("ice", {})))
-        part(lambda: self.coil.from_dict(d.get("coil", {})))
-        part(lambda: self.usage.from_dict(d.get("usage", {})))
-        part(lambda: setattr(self, "pi_i", float(d.get("pi_i", 0.0))))
-        part(lambda: setattr(self, "trim", {int(k): _clamp(float(v), TRIM_MIN, TRIM_MAX)
-                                            for k, v in (d.get("trim") or {}).items()}))
-        part(lambda: setattr(self, "summer_mean", d.get("summer_mean")))
-        part(lambda: setattr(self, "summer", bool(d.get("summer", False))))
-        part(lambda: setattr(self, "dT_sup", float(d.get("dT_sup", 3.5))))
-        part(lambda: setattr(self, "energy_th", float(d.get("energy_th", 0.0))))
-        part(lambda: setattr(self, "energy_el", float(d.get("energy_el", 0.0))))
-        part(lambda: setattr(self, "day_key", d.get("day_key")))
+        if pump:
+            part(lambda: self.mod.from_dict(d.get("mod", {})))
+            part(lambda: self.defl.from_dict(d.get("defl", {})))
+            part(lambda: self.coil.from_dict(d.get("coil", {})))
+        if house:
+            try:
+                self.model.from_dict(d.get("model", {}))
+            except (TypeError, ValueError, AttributeError, KeyError):
+                self.model.reset()          # a corrupted model starts fresh
+            part(lambda: self.tracker.from_dict(d.get("tracker", {})))
+            part(lambda: self.prices.from_dict(d.get("prices", {})))
+            part(lambda: self.dhw.from_dict(d.get("dhw", {})))
+            part(lambda: self.ice.from_dict(d.get("ice", {})))
+            part(lambda: self.usage.from_dict(d.get("usage", {})))
+            part(lambda: setattr(self, "pi_i", float(d.get("pi_i", 0.0))))
+            part(lambda: setattr(self, "trim", {int(k): _clamp(float(v), TRIM_MIN, TRIM_MAX)
+                                                for k, v in (d.get("trim") or {}).items()}))
+            part(lambda: setattr(self, "summer_mean", d.get("summer_mean")))
+            part(lambda: setattr(self, "summer", bool(d.get("summer", False))))
+            part(lambda: setattr(self, "dT_sup", float(d.get("dT_sup", 3.5))))
+            part(lambda: setattr(self, "energy_th", float(d.get("energy_th", 0.0))))
+            part(lambda: setattr(self, "energy_el", float(d.get("energy_el", 0.0))))
+            part(lambda: setattr(self, "day_key", d.get("day_key")))
 
-        def counters() -> None:
-            t = d.get("today") or {}
-            self.today = {"th": float(t.get("th", 0.0)), "el": float(t.get("el", 0.0)), "starts": int(t.get("starts", 0))}
-            y = d.get("yesterday")
-            self.yesterday = None if not y else {"th": float(y["th"]), "el": float(y["el"]), "starts": int(y["starts"])}
+            def counters() -> None:
+                t = d.get("today") or {}
+                self.today = {"th": float(t.get("th", 0.0)), "el": float(t.get("el", 0.0)), "starts": int(t.get("starts", 0))}
+                y = d.get("yesterday")
+                self.yesterday = None if not y else {"th": float(y["th"]), "el": float(y["el"]), "starts": int(y["starts"])}
 
-        part(counters)
+            part(counters)
 
     # ----------------------------------------------------------- helpers
     @staticmethod
@@ -427,6 +439,7 @@ class SmartController:
             dt_h = _clamp((now - self._last_step).total_seconds() / 3600.0, 0.0, 0.5)
         self._last_step = now
         d = Decision()
+        d.shadow = not inp.regeling_actief   # first of all: every exit below (also "sensor missing") must respect it
 
         program_now = self._program(now, s)
         d.program = program_now
@@ -481,7 +494,11 @@ class SmartController:
         sp_now = sp_at(now)
         d.room_setpoint = sp_now
         d.program = PROGRAM_MANUAL if manual_active else program_now
-        tr, to_now = inp.room, inp.outside
+        # tr_main = what the main sensor really measures: the learned house model, the floor estimate, the evening
+        # correction and the plan all work with this one. tr = what the heating demand looks at: the same, minus
+        # the shortfall of a guard room (a cold bedroom asks for more heat but does not make the living room "cold").
+        tr_main, to_now = inp.room, inp.outside
+        tr = tr_main - max(0.0, inp.room_deficit)
 
         # ---- bookkeeping: heating state, defrost, energy
         heating = self._heating(inp, s["min_freq"], s["pomp_min_vermogen"])
@@ -497,10 +514,11 @@ class SmartController:
         # water temperatures are unreliable during and shortly after a defrost: no COP, no learning
         dtw_now = (inp.flow - inp.ret) if inp.flow is not None and inp.ret is not None else None
         started_before = self.defl.last_start
-        self.defl.update(now, d.defrost, dtw_now, heating, inp.unit_outside)
+        self.defl.update(now, d.defrost, dtw_now, heating, inp.unit_outside,
+                         run_min=self._run_min if self._run_tracked and self.defl.last_start is not None else None)
         # compressor running minutes since the last defrost started: a long standstill must not look like "late"
         if self.defl.last_start != started_before:
-            self._run_min = 0.0
+            self._run_min, self._run_tracked = 0.0, True
         elif heating and not d.defrost:
             self._run_min += dt_h * 60.0
         if d.defrost:
@@ -510,7 +528,6 @@ class SmartController:
         d.bivalent = to_now < s["bivalent_temp"]
         d.heating = heating and not d.defrost
         d.switch_state = inp.switch_state
-        d.shadow = not inp.regeling_actief
 
         power_w = inp.power_w or 0.0
         if settling or not heating or not inp.flow_lh or inp.flow is None or inp.ret is None:
@@ -530,7 +547,7 @@ class SmartController:
                         since_last_min=self._run_min if self.defl.last_start is not None else None,
                         coil_weak_streak=self.coil.weak_streak, coil_cold=self.coil.cold)
         d.ice_level, d.ice_warning = self.ice.level, self.ice.level == "ijs"
-        d.next_defrost_min = self.defl.minutes_until_next(now)
+        d.next_defrost_min = self.defl.minutes_until_next(now, self._run_min if self._run_tracked else None)
         # Never switch the unit off in the middle of (or right before) a defrost: the ice stays on the
         # coil and the pump may not be able to start again. Circulating is fine, so we coast instead.
         soon = bool(heating and d.next_defrost_min is not None
@@ -624,7 +641,7 @@ class SmartController:
         if proxy_ok:
             self.f_est = f_meas if self.f_est is None else 0.5 * self.f_est + 0.5 * f_meas
         elif self.f_est is not None:
-            self.f_est += -beta * (self.f_est - tr) * dt_h
+            self.f_est += -beta * (self.f_est - tr_main) * dt_h
         f_known = self.f_est is not None
 
         # ---- learning
@@ -647,7 +664,7 @@ class SmartController:
 
         # ---- evening learning (bias for the floor target at bedtime)
         if not away_active:
-            self.tracker.update(now, tr, sp_now, s["bedtijd"])
+            self.tracker.update(now, tr_main, sp_now, s["bedtijd"])
 
         self._unit_diff = (round(inp.unit_outside - inp.outside, 1)
                            if inp.unit_outside is not None and inp.outside is not None else None)
@@ -757,10 +774,10 @@ class SmartController:
         pl = PlanResult()
         if plan_ok:
             key = (now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0), sp_now,
-                   round(tr, 1), manual_active, round(self.tracker.bias, 2))
+                   round(tr_main, 1), manual_active, round(self.tracker.bias, 2))
             if key != self._plan_key or self._plan is None:
                 self._plan = run_plan(PlanInput(
-                    now=now, tr=tr, f=self.f_est, model=self.model, to_fn=to_fn, sun_fn=sun_fn,
+                    now=now, tr=tr_main, f=self.f_est, model=self.model, to_fn=to_fn, sun_fn=sun_fn,
                     sp_fn=sp_at, price_fn=price_fn, s_base_fn=s_base, w_offset=w_off,
                     s_min=s["min_setpoint"], s_max=s_max, bedtime=bedtime, quiet_fn=quiet_fn,
                     quiet_boost=s["stille_boost_max"], tol_low=s["tolerantie_laag"],
@@ -798,7 +815,7 @@ class SmartController:
         d.grid_limited = grid_block
         # room trend over the last ~40 min (K/h)
         th = now.timestamp() / 3600.0
-        self._tr_win = [x for x in self._tr_win if th - x[0] <= 0.67] + [(th, tr)]
+        self._tr_win = [x for x in self._tr_win if th - x[0] <= 0.67] + [(th, tr_main)]
         self._tr_rate = (_slope([x[0] for x in self._tr_win], [x[1] for x in self._tr_win])
                          if len(self._tr_win) >= 5 and th - self._tr_win[0][0] >= 0.25 else 0.0)
         # floor heat check: how far the measured floor is below the temperature that holds the room at its target

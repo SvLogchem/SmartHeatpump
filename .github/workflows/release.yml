@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  # geen release als de tests falen
+  # geen release als de tests, hassfest of de HACS-controle falen
   tests:
     runs-on: ubuntu-latest
     steps:
@@ -22,8 +22,22 @@ jobs:
           python-version: "3.13"
       - run: pip install pytest && python -m pytest -q
 
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+
   release:
-    needs: tests
+    needs: [tests, hassfest, hacs]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

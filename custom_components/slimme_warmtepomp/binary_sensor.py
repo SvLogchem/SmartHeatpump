@@ -19,7 +19,7 @@ SPECS = [
     ("ijsvorming_alarm", "ijsvorming_alarm", "Slimme WP Ijsvorming Vermoed", "ice_warning",
      BinarySensorDeviceClass.PROBLEM),
     ("tekort_boost", "tekort_boost", "Slimme WP Tekort Boost Bezig", "boosting", None),
-    ("vorstbeveiliging", "vorstbeveiliging", "Slimme WP Vorstbeveiliging Actief", "frost", None),
+    ("vorstbeveiliging", "vorstbeveiliging", "Slimme WP Vorstbeveiliging Bezig", "frost", None),
     ("sensor_probleem", "sensor_probleem", "Slimme WP Sensorprobleem", "sensor_problem",
      BinarySensorDeviceClass.PROBLEM),
 ]

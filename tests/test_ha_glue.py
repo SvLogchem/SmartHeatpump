@@ -551,24 +551,154 @@ def test_export_and_import_settings_and_learned_state(tmp_path):
     c.settings["setpoint_dag"] = 21.5
     c.switches["prijssturing_actief"] = False
     c.controller.mod.observe(3.0, True, 50.0, 4.0)
-    call = types.SimpleNamespace(data={"leerstatus": True})
+    call = types.SimpleNamespace(data={"pompkennis": True, "huiskennis": True})
     out = run(handlers["exporteer"](call))
     assert out["instellingen"]["setpoint_dag"] == 21.5 and out["schakelaars"]["prijssturing_actief"] is False
     assert (tmp_path / "slimme_warmtepomp_export.json").is_file() and "leerstatus" in out
 
     c.settings["setpoint_dag"] = 19.0; c.switches["prijssturing_actief"] = True
     c.controller.mod.reset()
-    res = run(handlers["importeer"](types.SimpleNamespace(data={})))            # reads the file
-    assert res["leerstatus"] and not res["overgeslagen"]
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"huiskennis": True})))   # reads the file
+    assert res["leerstatus"] and res["pompkennis"] and res["huiskennis"] and not res["overgeslagen"]
     assert c.settings["setpoint_dag"] == 21.5 and c.switches["prijssturing_actief"] is False
     assert c.controller.mod.bins                                                  # the learned table is back
 
     # without the learned part only settings come back; garbage and out-of-range values are handled
     c.controller.mod.reset()
     bad = {**out, "instellingen": {"setpoint_dag": 99.0, "bestaat_niet": 1.0, "glycol": "veel"}, "schakelaars": {"leren_actief": "ja"}}
-    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": bad, "leerstatus": False})))
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": bad, "pompkennis": False, "huiskennis": False})))
     assert c.settings["setpoint_dag"] == 25.0                                    # clamped to the maximum of the setting
     assert sorted(res["overgeslagen"]) == ["bestaat_niet", "glycol", "leren_actief"] and not res["leerstatus"]
     assert not c.controller.mod.bins
     with pytest.raises(Exception):
         run(c.import_bundle({"iets": "anders"}))
+
+
+def _export_setup(tmp_path):
+    h, entry = make_hass()
+    h.config.path = lambda name: str(tmp_path / name)
+    h.config_entries.async_entries = lambda domain=None: [entry]
+    handlers = {}
+    h.services.async_register = lambda domain, name, fn, schema=None, supports_response=None: handlers.__setitem__(name, fn)
+
+    async def exec_job(fn, *a):
+        return fn(*a)
+    h.async_add_executor_job = exec_job
+    init = importlib.import_module(PKG)
+    run(init.async_setup(h, {}))
+    run(init.async_setup_entry(h, entry))
+    return h, entry.runtime_data, handlers
+
+
+def test_export_keeps_house_knowledge_out_unless_asked(tmp_path):
+    h, c, handlers = _export_setup(tmp_path)
+    c.controller.mod.observe(3.0, True, 50.0, 4.0)
+    c.controller.model.learn_room(-0.1, 3.0, 15.0, 0.1)
+    call = lambda **kw: types.SimpleNamespace(data=kw)      # noqa: E731
+    out = run(handlers["exporteer"](call()))                                      # the defaults: pump yes, house no
+    assert out["kennis"] == {"pomp": True, "huis": False}
+    assert "mod" in out["leerstatus"] and "defl" in out["leerstatus"] and "model" not in out["leerstatus"]
+    assert "tracker" not in out["leerstatus"] and "usage" not in out["leerstatus"]
+    full = run(handlers["exporteer"](call(huiskennis=True)))
+    assert full["kennis"] == {"pomp": True, "huis": True} and "model" in full["leerstatus"] and "mod" in full["leerstatus"]
+    house_only = run(handlers["exporteer"](call(pompkennis=False, huiskennis=True)))
+    assert "model" in house_only["leerstatus"] and "mod" not in house_only["leerstatus"]
+    none = run(handlers["exporteer"](call(pompkennis=False, huiskennis=False)))
+    assert "leerstatus" not in none and none["kennis"] == {"pomp": False, "huis": False}
+    assert "leerstatus" in run(handlers["exporteer"](call(leerstatus=True)))      # the v2.18.0 name still works (both parts)
+
+
+def test_importing_a_pump_only_export_does_not_touch_the_house_model(tmp_path):
+    h, c, handlers = _export_setup(tmp_path)
+    c.controller.mod.observe(3.0, True, 50.0, 4.0)
+    shared = run(handlers["exporteer"](types.SimpleNamespace(data={})))           # somebody else's export: pump knowledge only
+    c.controller.mod.reset()
+    c.controller.model.learn_room(-0.1, 3.0, 15.0, 0.1)                           # this house's own model
+    before = c.controller.model.to_dict()
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": shared, "huiskennis": True})))   # asks for more than it has
+    assert res["pompkennis"] and not res["huiskennis"]
+    assert c.controller.mod.bins                                                  # the frequency table came in
+    assert c.controller.model.to_dict() == before                                 # the house model is untouched, not reset
+    # a full export imported with the defaults: the house part is left out
+    full = run(handlers["exporteer"](types.SimpleNamespace(data={"huiskennis": True})))
+    c.controller.model.reset()
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": full})))
+    assert res["pompkennis"] and not res["huiskennis"] and c.controller.model.windows_room == 0
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": full, "huiskennis": True})))
+    assert res["huiskennis"] and c.controller.model.windows_room == 1
+    # an export made by v2.18.0 (no "kennis" marker) still imports completely when both parts are asked for
+    old = {k: v for k, v in full.items() if k != "kennis"}
+    c.controller.model.reset()
+    res = run(handlers["importeer"](types.SimpleNamespace(data={"data": old, "leerstatus": True})))
+    assert res["pompkennis"] and res["huiskennis"] and c.controller.model.windows_room == 1
+
+
+def test_no_two_entities_share_a_display_name(setup):
+    h, entry, c = setup
+    names = [e._attr_name for _, e in h.entities if getattr(e, "_attr_name", None)]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert not dupes, dupes
+    by_name = {e._attr_name: p for p, e in h.entities}
+    assert by_name["Slimme WP Vorstbeveiliging Actief"] == "switch"          # the switch to turn it on or off
+    assert by_name["Slimme WP Vorstbeveiliging Bezig"] == "binary_sensor"    # the state: is it running now
+
+
+def test_when_a_message_was_last_sent_survives_a_restart():
+    from datetime import timezone
+    h, entry, c = _notify_setup()
+    t0 = datetime.now(timezone.utc)
+    assert run(c._notify("vorst", "t", "m", t0, every_h=6)) is True
+    run(c.async_save())
+    # a restart: new coordinator, same stored data
+    h2, entry2 = make_hass({**CONFIG, "notify_services": ["notify.mobile_app_pixel"]})
+    assert run(importlib.import_module(PKG).async_setup_entry(h2, entry2)) is True
+    c2 = entry2.runtime_data
+    assert run(c2._notify("vorst", "t", "m", t0 + timedelta(hours=1), every_h=6)) is False    # not sent again after the restart
+    assert run(c2._notify("vorst", "t", "m", t0 + timedelta(hours=7), every_h=6)) is True
+
+
+def test_no_cold_room_message_while_a_window_is_open():
+    import dataclasses
+    from datetime import timezone
+    h, entry, c = _notify_setup()
+    run(c.async_request_refresh())
+    dec = dataclasses.replace(c.data, room_setpoint=21.0, summer=False, defrost=False, window_open=True)
+    inp = dataclasses.replace(run(c._build_inputs()), room=18.0)
+    h.services.calls.clear()
+    t0 = datetime.now(timezone.utc)
+    run(c._notify_cold(dec, inp, t0)); run(c._notify_cold(dec, inp, t0 + timedelta(hours=5)))
+    assert not [x for x in h.services.calls if x[0] == "notify"] and c._cold_since is None
+
+
+def test_extra_rooms_are_part_of_the_sensor_check():
+    cfg = {**CONFIG, "extra_room_sensors": ["sensor.slaap", "sensor.baby"]}
+    h, entry = make_hass(cfg)
+    h.states.set("sensor.slaap", 18.0)
+    assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+    c = entry.runtime_data
+    readings = c._health_readings(datetime.now().astimezone())
+    assert readings["kamer_2"]["entity"] == "sensor.slaap" and readings["kamer_2"]["value"] == 18.0
+    assert readings["kamer_3"]["state"] == "unavailable"                      # sensor.baby does not exist
+
+
+def test_a_newer_config_version_is_refused_not_accepted():
+    init = importlib.import_module(PKG)
+    h, _ = make_hass()
+    updates = []
+    h.config_entries.async_update_entry = lambda e, data=None, version=None: updates.append(version)
+    entry = types.SimpleNamespace(version=3, title="Slimme Warmtepomp", data={})
+    assert run(init.async_migrate_entry(h, entry)) is False and not updates
+    assert run(init.async_migrate_entry(h, types.SimpleNamespace(version=2, title="x", data={}))) is True
+
+
+def test_guard_room_shortfall_reaches_the_controller_as_extra_demand_not_as_a_colder_room():
+    cfg = {**CONFIG, "extra_room_sensors": ["sensor.slaap"], "room_mode": "hoofd"}
+    h, entry = make_hass(cfg)
+    h.states.set("sensor.slaap", 15.0)
+    assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+    c = entry.runtime_data
+    inp = run(c._build_inputs())
+    assert inp.room == 20.5 and inp.room_deficit == pytest.approx(2.0)        # min_extra_kamer 17 - 15
+    h.states.set("sensor.room", "unavailable")
+    inp = run(c._build_inputs())
+    assert inp.room is None and inp.room_deficit == 0.0                        # no main sensor: hold, do not heat on the bedroom

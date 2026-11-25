@@ -31,7 +31,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "health_body": "{problem}",
         "health_unavailable": "{entity} geeft al geruime tijd geen waarde ({role}).",
         "health_stale": "{entity} is al {hours:.0f} uur niet bijgewerkt ({role}).",
-        "health_implausible": "{entity} meldt een onwaarschijnlijke waarde ({value}) voor {role}.",
+        "health_implausible": "{entity} meldt een onwaarschijnlijke waarde ({value:.1f}) voor {role}.",
         "health_outside": "De buitentemperatuur van je regeling ({a:.1f} °C) wijkt {diff:.0f} °C af van de buitensensor van de pomp ({b:.1f} °C). "
                           "Controleer welke sensor klopt.",
         "week_title": "Weekrapport warmtepomp",
@@ -63,7 +63,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "health_body": "{problem}",
         "health_unavailable": "{entity} has not given a value for some time ({role}).",
         "health_stale": "{entity} has not been updated for {hours:.0f} hours ({role}).",
-        "health_implausible": "{entity} reports an implausible value ({value}) for {role}.",
+        "health_implausible": "{entity} reports an implausible value ({value:.1f}) for {role}.",
         "health_outside": "The outdoor temperature of your control ({a:.1f} °C) differs {diff:.0f} °C from the pump's own outdoor sensor ({b:.1f} °C). "
                           "Check which sensor is right.",
         "week_title": "Heat pump weekly report",
@@ -89,4 +89,11 @@ def msg(code, key: str, **kw) -> str:
 
 
 def role_name(code, role: str) -> str:
-    return ROLES[lang(code)].get(role, role)
+    """"kamer_2" -> "kamertemperatuur 2" (the extra rooms)."""
+    names = ROLES[lang(code)]
+    if role in names:
+        return names[role]
+    head, _, tail = role.rpartition("_")
+    if head in names and tail.isdigit():
+        return f"{names[head]} {tail}"
+    return role

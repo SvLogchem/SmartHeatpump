@@ -205,11 +205,15 @@
     },
     "exporteer": {
       "name": "Export settings and learned data",
-      "description": "Writes all settings, switches and (optionally) the learned model to slimme_warmtepomp_export.json in your config folder and also returns them as the response.",
+      "description": "Writes all settings, switches and (optionally) what the control has learned to slimme_warmtepomp_export.json in your config folder and also returns them as the response.",
       "fields": {
-        "leerstatus": {
-          "name": "Include learned model",
-          "description": "Include the learned house and floor model, the frequency table and the heating curve."
+        "pompkennis": {
+          "name": "Pump knowledge",
+          "description": "Include what was learned about the heat pump itself (frequency table, defrost behaviour). Handy to share with someone who has the same pump."
+        },
+        "huiskennis": {
+          "name": "House knowledge",
+          "description": "Also include what was learned about your house (cooling time, floor, heating curve, statistics). Only for a backup of your own installation; in another house it controls wrongly until it is unlearned."
         }
       }
     },
@@ -217,9 +221,13 @@
       "name": "Import settings and learned data",
       "description": "Reads slimme_warmtepomp_export.json from your config folder (or the data you pass) and applies it. Values are kept within the allowed limits.",
       "fields": {
-        "leerstatus": {
-          "name": "Include learned model",
-          "description": "Also restore the learned model. Off = settings and switches only."
+        "pompkennis": {
+          "name": "Pump knowledge",
+          "description": "Also restore the pump knowledge from the export (frequency table, defrost behaviour), as far as the export contains it."
+        },
+        "huiskennis": {
+          "name": "House knowledge",
+          "description": "Also restore the house knowledge from the export (cooling time, floor, heating curve, statistics). Only for restoring a backup of this house."
         },
         "data": {
           "name": "Data",

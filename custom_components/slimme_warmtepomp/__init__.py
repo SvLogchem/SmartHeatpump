@@ -79,8 +79,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 return entry.runtime_data
         raise HomeAssistantError("Slimme Warmtepomp is not set up")
 
+    def _knowledge(call: ServiceCall) -> tuple[bool, bool]:
+        """(pump knowledge, house knowledge). The old ``leerstatus`` of v2.18.0 still switches both."""
+        if "leerstatus" in call.data:
+            both = bool(call.data["leerstatus"])
+            return both, both
+        return bool(call.data.get("pompkennis", True)), bool(call.data.get("huiskennis", False))
+
     async def _export(call: ServiceCall) -> dict:
-        bundle = _coordinator().export_bundle(bool(call.data.get("leerstatus", True)))
+        bundle = _coordinator().export_bundle(*_knowledge(call))
         path = hass.config.path(EXPORT_FILE)
         await hass.async_add_executor_job(_write_json, path, bundle)
         return {"bestand": EXPORT_FILE, **bundle}
@@ -90,13 +97,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if not bundle:
             path = hass.config.path(EXPORT_FILE)
             bundle = await hass.async_add_executor_job(_read_json, path)
-        return await _coordinator().import_bundle(bundle, bool(call.data.get("leerstatus", True)))
+        return await _coordinator().import_bundle(bundle, *_knowledge(call))
 
-    hass.services.async_register(DOMAIN, SERVICE_EXPORT, _export, schema=vol.Schema(
-        {vol.Optional("leerstatus", default=True): bool}), supports_response=SupportsResponse.OPTIONAL)
+    knowledge = {vol.Optional("pompkennis"): bool, vol.Optional("huiskennis"): bool, vol.Optional("leerstatus"): bool}
+    hass.services.async_register(DOMAIN, SERVICE_EXPORT, _export, schema=vol.Schema(knowledge),
+                                 supports_response=SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, SERVICE_IMPORT, _import, schema=vol.Schema(
-        {vol.Optional("leerstatus", default=True): bool, vol.Optional("data"): dict}),
-        supports_response=SupportsResponse.OPTIONAL)
+        {**knowledge, vol.Optional("data"): dict}), supports_response=SupportsResponse.OPTIONAL)
     await _register_dashboard_strategy(hass)
     return True
 
@@ -137,7 +144,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: SlimmeConfigEntry) -> bo
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """v1 -> v2 (integration 2.18): the two fixed flow-rate fields became one list of any length."""
+    """v1 -> v2 (integration 2.18): the two fixed flow-rate fields became one list of any length.
+
+    An entry that was saved by a newer version of the integration cannot be read by this one (going back to an older
+    release): refuse it, so Home Assistant reports a migration error instead of running with data it does not know."""
+    if entry.version > 2:
+        _LOGGER.error("The configuration of %s was saved by a newer version of the integration (config version %s); "
+                      "update the integration, or restore a backup", entry.title, entry.version)
+        return False
     if entry.version == 1:
         data = dict(entry.data)
         flows = [data.pop(CONF_FLOW_RATE_1, None), data.pop(CONF_FLOW_RATE_2, None)]

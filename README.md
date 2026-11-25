@@ -38,22 +38,22 @@ De velden zijn vooraf ingevuld als er een goede kandidaat is gevonden (op eenhei
 
 Alle ruimtes delen één waterkring, dus per ruimte stoken kan niet. Wat wel kan, is kiezen hoe de ruimtes meetellen (*Ruimte en buiten* → *Hoe worden meerdere ruimtes gebruikt?*):
 
-- **Hoofdruimte stuurt, extra ruimtes bewaken** (standaard): de regeling stuurt op de hoofdruimte. Wordt een extra ruimte kouder dan `Minimum Extra Ruimtes` (standaard 17 °C), dan ziet de regeling een tekort van gelijke grootte (maximaal 3 K), zodat er langer wordt gestookt tot ook die ruimte weer boven het minimum is.
+- **Hoofdruimte stuurt, extra ruimtes bewaken** (standaard): de regeling stuurt op de hoofdruimte. Wordt een extra ruimte kouder dan `Minimum Extra Ruimtes` (standaard 17 °C), dan komt er een extra warmtevraag van gelijke grootte bij (maximaal 3 K), zodat er langer wordt gestookt tot ook die ruimte weer boven het minimum is. Het geleerde huismodel, de avondcorrectie en de stooklijncorrectie blijven op de echte temperatuur van de hoofdruimte leren: een koude slaapkamer maakt de woonkamer niet "te koud" voor het model.
 - **Gemiddelde:** het gemiddelde van alle ruimtes.
 - **Koudste:** de koudste ruimte bepaalt.
 
-Valt een sensor uit, dan blijft de regeling werken met de overige sensoren. Het dashboard toont de ruimtes en wat de regeling ervan maakt (attribuut `kamers` op *Berekend Setpoint*).
+Valt een extra ruimte uit, dan wordt die genegeerd. Valt de **hoofdsensor** uit, dan houdt de regeling haar laatste stand vast (zoals bij elke ontbrekende kamersensor, met vorstbeveiliging): de andere ruimtes nemen de plaats van de woonkamer niet over, want het doel is een doel voor de hoofdruimte. Het dashboard toont de ruimtes en wat de regeling ervan maakt (attribuut `kamers` op *Berekend Setpoint*).
 
 ### Sensorcontrole (Reparaties)
 
 De integratie bewaakt de sensoren die ze gebruikt en meldt een probleem onder *Instellingen → Systeem → Reparaties* (en als melding, als je die hebt ingesteld):
 
 - een sensor die al 30 minuten geen waarde heeft;
-- een sensor die al 6 uur niet is bijgewerkt;
+- een sensor die al 6 uur niet is bijgewerkt (niet bij de compressorfrequentie, die uren op dezelfde waarde kan staan, en niet bij aanvoer, retour, vloer en vermogen zolang de pomp stilstaat);
 - een onwaarschijnlijke waarde (bijvoorbeeld 85 °C als kamertemperatuur) langer dan 10 minuten;
 - een buitentemperatuur die 2 uur lang 8 K of meer afwijkt van de buitensensor van de pomp zelf (zon op de sensor?).
 
-Een probleem verdwijnt vanzelf als de sensor weer klopt. De waakhond (`binary_sensor.slimme_wp_sensorprobleem`) bestaat daarnaast nog steeds.
+De extra kamersensoren worden meegecontroleerd. Een probleem verdwijnt vanzelf als de sensor weer klopt. De waakhond (`binary_sensor.slimme_wp_sensorprobleem`) bestaat daarnaast nog steeds.
 
 ### Meldingen op je telefoon
 
@@ -75,8 +75,10 @@ Elke maandagochtend (vanaf 08:00) maakt de integratie een overzicht van de laats
 
 Voor een nieuwe installatie, een reservekopie of om je instellingen te delen:
 
-- `slimme_warmtepomp.exporteer` schrijft alle instellingen, schakelaars en (optioneel, `leerstatus`) het geleerde model, de frequentietabel en de stooklijn naar `slimme_warmtepomp_export.json` in je configuratiemap, en geeft ze ook als antwoord terug.
-- `slimme_warmtepomp.importeer` leest dat bestand (of de meegegeven `data`) en past alles toe. Waarden worden binnen de toegestane grenzen gehouden; wat niet kon, staat in het antwoord. Het geleerde model hoef je niet mee te nemen (`leerstatus: false`) als je alleen de instellingen van een ander wilt overnemen.
+- `slimme_warmtepomp.exporteer` schrijft alle instellingen, schakelaars en (optioneel) wat de regeling geleerd heeft naar `slimme_warmtepomp_export.json` in je configuratiemap, en geeft ze ook als antwoord terug. Je kiest apart:
+  - `pompkennis` (standaard aan): de frequentietabel en het ontdooigedrag. Dat hoort bij de pomp en is bruikbaar voor iemand met dezelfde pomp.
+  - `huiskennis` (standaard uit): het huismodel (afkoeltijd, vloer), de avondcorrectie, de stooklijn en de statistieken. Dat hoort bij jouw huis; in een ander huis zou het weken verkeerd regelen tot het is afgeleerd. Zet dit alleen aan voor een back-up van je eigen installatie.
+- `slimme_warmtepomp.importeer` leest dat bestand (of de meegegeven `data`) en past alles toe, met dezelfde twee keuzes. Waarden worden binnen de toegestane grenzen gehouden; wat niet kon, staat in het antwoord. Wat niet in de export zit, wordt niet aangeraakt: een export met alleen pompkennis laat je eigen huismodel dus staan.
 
 Je sensor-koppelingen zitten er bewust niet in: die horen bij jouw installatie.
 
@@ -377,3 +379,17 @@ Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven)
 - Nieuw: sensorcontrole via *Reparaties*, meldingen naar je telefoon (vorst, ijs, te koude kamer, sensorproblemen), een weekrapport, en de diensten `exporteer` en `importeer` voor instellingen en geleerde gegevens.
 - Nieuw: volledig Engelse versie (README.en.md, wizard, meldingen, diensten, dashboard en entiteitnamen volgen de taal van Home Assistant; de entiteit-ID's blijven gelijk).
 - Het dashboard toont de ruimtes, alle doorstromingssensoren en het weekrapport.
+
+### Reviewpunten opgelost (v2.18.1)
+- Schaduwmodus (*Regeling Actief* uit) wordt nu ook gerespecteerd als de kamersensor wegvalt tijdens vorst; eerder zette de integratie dan toch de pomp aan.
+- Valt de hoofdsensor van de woonkamer weg, dan houdt de regeling de laatste stand vast in plaats van op het gemiddelde van de extra ruimtes te gaan sturen.
+- Een te koude bewaakte ruimte telt als extra warmtevraag en niet meer als "te koude woonkamer" voor het geleerde model, de avondcorrectie, de stooklijncorrectie en het voorspellen.
+- Geen valse melding "sensor wordt niet bijgewerkt" meer voor de compressorfrequentie en voor de pompsensoren terwijl de pomp stilstaat. De extra kamersensoren zitten nu in de sensorcontrole en het getal in de melding over een onwaarschijnlijke waarde is afgerond.
+- De status *Slimme WP Vorstbeveiliging Bezig* en de schakelaar *Slimme WP Vorstbeveiliging Actief* hebben niet meer dezelfde naam (de entiteit-ID's blijven gelijk).
+- Export en import: *pompkennis* en *huiskennis* los te kiezen; het huismodel gaat standaard niet meer mee.
+- *Volgende ontdooicyclus* telt in draaitijd van de compressor (na lange stilstand niet meer "199 minuten te laat"), en het ontdooi-interval wordt ook in draaitijd geleerd.
+- Het tijdstip van de laatst verzonden melding wordt bewaard, zodat een herstart tijdens vorst of een sensorprobleem de melding niet opnieuw stuurt.
+- Geen melding "woonkamer te koud" meer terwijl een raam of deur openstaat.
+- `async_migrate_entry` weigert een configuratie die door een nieuwere versie is opgeslagen.
+- De release wacht nu ook op hassfest en de HACS-controle.
+- Bewust niet veranderd: de presetnamen *Dag*, *Nacht* en *Handmatig* blijven Nederlands (ook voor Engelstalige gebruikers). Hassfest accepteert alleen kleine letters in vertaalsleutels; andere namen zouden automatiseringen breken die deze presets gebruiken.

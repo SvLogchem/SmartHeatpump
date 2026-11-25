@@ -42,22 +42,22 @@ Fields are pre-filled when a good candidate is found (by unit, device class and 
 
 All rooms share one water circuit, so heating per room is not possible. You can choose how the rooms count:
 
-- **Main room steers, extra rooms guard** (default): control follows the main room. If an extra room gets colder than *Minimum Extra Rooms* (default 17 °C) the control sees a shortfall of the same size (at most 3 K), so it heats longer until that room is back above its minimum.
+- **Main room steers, extra rooms guard** (default): control follows the main room. If an extra room gets colder than *Minimum Extra Rooms* (default 17 °C) an extra heat demand of the same size (at most 3 K) is added, so it heats longer until that room is back above its minimum. The learned house model, the evening correction and the heating-curve correction keep learning from the real temperature of the main room: a cold bedroom does not make the living room look "too cold" to the model.
 - **Average** of all rooms.
 - **Coldest:** the coldest room decides.
 
-If a sensor drops out the control keeps working with the others.
+An extra room that drops out is ignored. If the **main sensor** drops out the control holds its last state (as for any missing room sensor, with frost protection still active): the other rooms do not take the living room's place, because the target is a target for the main room.
 
 ### Sensor check (Repairs)
 
 The integration watches the sensors it uses and reports problems under *Settings → System → Repairs* (and as a notification if you set one up):
 
 - a sensor without a value for 30 minutes;
-- a sensor not updated for 6 hours;
+- a sensor not updated for 6 hours (not for the compressor frequency, which may stay on one value for hours, and not for flow, return, floor and power while the pump stands still);
 - an implausible value (for example 85 °C as room temperature) for more than 10 minutes;
 - an outdoor temperature that differs 8 K or more from the pump's own outdoor sensor for 2 hours (sun on the sensor?).
 
-A problem disappears by itself once the sensor is fine again.
+The extra room sensors are checked too. A problem disappears by itself once the sensor is fine again.
 
 ### Notifications on your phone
 
@@ -79,8 +79,10 @@ Every Monday morning (from 08:00) you get a summary of the last 7 days: energy u
 
 For a new installation, a backup, or to share your settings:
 
-- `slimme_warmtepomp.exporteer` writes all settings, switches and (optionally, `leerstatus`) the learned model, frequency table and heating curve to `slimme_warmtepomp_export.json` in your config folder and also returns them as the response.
-- `slimme_warmtepomp.importeer` reads that file (or the `data` you pass) and applies it. Values are kept within the allowed limits; anything that could not be applied is listed in the response. Pass `leerstatus: false` to take over only the settings.
+- `slimme_warmtepomp.exporteer` writes all settings, switches and (optionally) what the control has learned to `slimme_warmtepomp_export.json` in your config folder and also returns them as the response. You choose separately:
+  - `pompkennis` (pump knowledge, on by default): the frequency table and defrost behaviour. That belongs to the pump and is useful for anyone with the same pump.
+  - `huiskennis` (house knowledge, off by default): the house model (cooling time, floor), the evening correction, the heating curve and the statistics. That belongs to your house; in another house it would control wrongly for weeks until it is unlearned. Only switch it on for a backup of your own installation.
+- `slimme_warmtepomp.importeer` reads that file (or the `data` you pass) and applies it, with the same two choices. Values are kept within the allowed limits; anything that could not be applied is listed in the response. Whatever is not in the export is left alone: an export with only pump knowledge leaves your own house model as it is.
 
 Your sensor links are deliberately not included: they belong to your installation.
 
@@ -154,6 +156,21 @@ Tabs: **Overview** (status, switches, what the control is doing, rooms, performa
 - The model is a two-node model (floor + room) with the return or floor temperature as floor proxy. With a very heavy screed and cold evenings it can overshoot; lower *Tolerance Too Warm* or use a real floor sensor.
 - Price forecasts are recognised from the shape of the attributes; check the attributes of *Calculated Setpoint* to see whether a forecast is used.
 - Tested with a simulated house and a simulated Home Assistant environment (see `tests/`); the setup wizard, repairs and dashboard have not been run in a real installation yet. Please report anything odd.
+
+## Changelog (v2.18.1)
+
+- Shadow mode (*Control Active* off) is now also respected when the room sensor drops out during frost; before, the integration still switched the pump on.
+- If the main living-room sensor drops out the control holds its last state instead of steering on the average of the extra rooms.
+- A guard room that is too cold counts as extra heat demand and no longer as a "too cold living room" for the learned model, the evening correction, the heating-curve correction and the prediction.
+- No more false "sensor not updated" for the compressor frequency, nor for the pump sensors while the pump stands still. The extra room sensors are part of the sensor check and the number in the implausible-value message is rounded.
+- The status *Smart HP Frost Protection Running* and the switch *Smart HP Frost Protection Active* no longer share a name (entity IDs unchanged).
+- Export and import: *pump knowledge* and *house knowledge* are chosen separately; the house model is no longer included by default.
+- *Next defrost cycle* counts compressor run time (no more "199 minutes overdue" after a long standstill) and the defrost interval is learned in run time too.
+- When a message was last sent is remembered, so a restart during frost or a sensor problem does not send it again.
+- No "living room too cold" message while a window or door is open.
+- `async_migrate_entry` refuses a configuration saved by a newer version.
+- The release now also waits for hassfest and the HACS check.
+- Left as it is on purpose: the preset names *Dag*, *Nacht* and *Handmatig* stay Dutch (also for English users). Hassfest only accepts lowercase translation keys; other names would break automations that use these presets.
 
 ## License
 

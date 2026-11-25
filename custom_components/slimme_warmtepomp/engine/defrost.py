@@ -39,11 +39,13 @@ class DefrostLearner:
         self._pre_dtw: float | None = None
 
     def update(self, now: datetime, defrost: bool, dtw: float | None, heating: bool,
-               unit_temp: float | None = None) -> None:
+               unit_temp: float | None = None, run_min: float | None = None) -> None:
+        """``run_min``: compressor minutes since the previous defrost started. The pump's defrost timer counts run
+        time, so with it the interval is not stretched by standstill; without it the clock is used."""
         if defrost and self._start is None:
             self._start, self._recov_start = now, None
             if self.last_start is not None:
-                gap = (now - self.last_start).total_seconds() / 60.0
+                gap = run_min if run_min is not None else (now - self.last_start).total_seconds() / 60.0
                 if 5.0 <= gap <= 360.0:
                     self.interval = _ew(self.interval, gap, self.n)
                     self.last_interval = gap
@@ -77,10 +79,15 @@ class DefrostLearner:
             return min(RECOVERY_CAP, max(1.0, 1.25 * self.recovery + 0.5))
         return default
 
-    def minutes_until_next(self, now: datetime) -> float | None:
-        """Expected minutes until the next defrost (negative = overdue); None until 3 cycles are known."""
+    def minutes_until_next(self, now: datetime, run_min: float | None = None) -> float | None:
+        """Expected minutes until the next defrost (negative = overdue); None until 3 cycles are known.
+
+        With ``run_min`` (compressor minutes since the last defrost started) the count is in run time, as the pump's
+        own timer is: after four hours of standstill the next defrost is not "199 minutes overdue"."""
         if self.n < 3 or self.interval is None or self.last_start is None:
             return None
+        if run_min is not None:
+            return round(self.interval - run_min, 1)
         return round((self.last_start + timedelta(minutes=self.interval) - now).total_seconds() / 60.0, 1)
 
     def minutes_since_last(self, now: datetime) -> float | None:

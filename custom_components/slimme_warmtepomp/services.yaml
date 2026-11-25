@@ -15,12 +15,18 @@ reset_model:
 
 exporteer:
   name: Exporteer instellingen en geleerde gegevens
-  description: Schrijft alle instellingen, schakelaars en (optioneel) het geleerde model naar het bestand slimme_warmtepomp_export.json in je configuratiemap en geeft ze ook als antwoord terug.
+  description: Schrijft alle instellingen, schakelaars en (optioneel) wat de regeling geleerd heeft naar het bestand slimme_warmtepomp_export.json in je configuratiemap en geeft ze ook als antwoord terug.
   fields:
-    leerstatus:
-      name: Ook het geleerde model
-      description: Neem het geleerde huis- en vloermodel, de frequentietabel en de stooklijn mee.
+    pompkennis:
+      name: Pompkennis
+      description: Neem wat over de warmtepomp zelf geleerd is mee (frequentietabel, ontdooigedrag). Handig om te delen met iemand die dezelfde pomp heeft.
       default: true
+      selector:
+        boolean:
+    huiskennis:
+      name: Huiskennis
+      description: Neem ook wat over jouw huis geleerd is mee (afkoeltijd, vloer, stooklijn, statistieken). Alleen voor een back-up van je eigen installatie; in een ander huis regelt dit verkeerd tot het is afgeleerd.
+      default: false
       selector:
         boolean:
 
@@ -28,10 +34,16 @@ importeer:
   name: Importeer instellingen en geleerde gegevens
   description: Leest slimme_warmtepomp_export.json uit je configuratiemap (of de meegegeven gegevens) en past ze toe. Waarden worden binnen de toegestane grenzen gehouden.
   fields:
-    leerstatus:
-      name: Ook het geleerde model
-      description: Zet ook het geleerde model terug. Uit = alleen instellingen en schakelaars.
+    pompkennis:
+      name: Pompkennis
+      description: Zet ook de pompkennis uit de export terug (frequentietabel, ontdooigedrag), voor zover de export die bevat.
       default: true
+      selector:
+        boolean:
+    huiskennis:
+      name: Huiskennis
+      description: Zet ook de huiskennis uit de export terug (afkoeltijd, vloer, stooklijn, statistieken). Alleen voor het terugzetten van een back-up van dit huis.
+      default: false
       selector:
         boolean:
     data:

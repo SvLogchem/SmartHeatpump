@@ -19,7 +19,7 @@ NAMES_EN: dict[str, str] = {
     "Slimme WP Tekort Boost Bezig": "Smart HP Shortfall Boost Running",
     "Slimme WP Uitlopen (Niet Verwarmen)": "Smart HP Coasting (Not Heating)",
     "Slimme WP Voorverwarmen Bezig": "Smart HP Pre-heating",
-    "Slimme WP Vorstbeveiliging Actief": "Smart HP Frost Protection Active",
+    "Slimme WP Vorstbeveiliging Bezig": "Smart HP Frost Protection Running",
     "Slimme WP Zacht Draaien (Laag Vermogen)": "Smart HP Soft Running (Low Power)",
     "Slimme WP Zomermodus (Stookgrens)": "Smart HP Summer Mode (Heating Limit)",
     # button / climate
