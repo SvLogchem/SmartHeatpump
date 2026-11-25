@@ -61,7 +61,7 @@ def test_price_parsing_common_formats():
     assert parse_price_forecast(epex, now)[0][1] == 0.25
     assert parse_price_forecast(entsoe, now)[0][1] == 0.4
     slots = parse_price_forecast(flat, now)
-    assert len(slots) == 48 and slots[0][0].hour == 0 and slots[24][1] == 0.2
+    assert len(slots) == 48 and slots[0][0].astimezone(TZ).hour == 0 and slots[24][1] == 0.2
     assert parse_price_forecast({"junk": [1, "a"], "x": "y"}, now) == []
 
 
@@ -94,8 +94,8 @@ def test_dhw_cycle():
     assert d.step(t + timedelta(hours=1), 43.0, s, 1.5, False, True).request is None
     assert d.step(t + timedelta(hours=1), 43.0, s, 0.5, False, True).mode == "topup"
     d.step(t + timedelta(hours=2), 50.0, s, 1.0, False, True)
-    # legionella after the interval
-    later = t + timedelta(days=7, hours=1)
+    # legionella after the interval (with a neutral price in the afternoon, see test_legionella_waits_for_the_afternoon...)
+    later = t + timedelta(days=7, hours=7)
     r = d.step(later, 50.0, s, 1.0, False, True)
     assert r.mode == "legionella" and r.setpoint == s["dhw_legionella_temp"]
     assert d.step(later + timedelta(minutes=50), 60.5, s, 1.0, False, True).request is False
@@ -104,9 +104,9 @@ def test_dhw_cycle():
     d.step(later + timedelta(hours=2), 30.0, s, 1.0, False, True)
     r = d.step(later + timedelta(hours=5), 31.0, s, 1.0, False, True)
     assert r.request is False and d.timeouts == 1
-    # disabled stops a running cycle
-    d.step(later + timedelta(hours=6), 30.0, s, 1.0, False, True)
-    assert d.step(later + timedelta(hours=6, minutes=5), 31.0, s, 1.0, False, False).request is False
+    # disabled stops a running cycle (after the wait that follows a time-out)
+    d.step(later + timedelta(hours=12), 30.0, s, 1.0, False, True)
+    assert d.step(later + timedelta(hours=12, minutes=5), 31.0, s, 1.0, False, False).request is False
 
 
 def _plan_input(model, to_fn, now, tr, f, bedtime=True):
@@ -1510,3 +1510,100 @@ def test_next_defrost_counts_compressor_run_time_not_the_clock():
     dl2.update(t0 + timedelta(minutes=3), False, 4.0, True)
     dl2.update(t0 + timedelta(hours=7), True, None, True, run_min=50.0)
     assert dl2.interval == pytest.approx(50.0)
+
+
+def test_a_hot_water_run_that_never_reaches_its_target_waits_before_trying_again():
+    s = {**DEFAULTS}
+    d = DhwController()
+    t = datetime(2026, 11, 12, 13, 0, tzinfo=TZ)
+    d.last_legionella = t - timedelta(days=7, hours=12)                    # legionella is due (60 C target)
+    assert d.step(t, 50.0, s, 1.0, False, True).mode == "legionella"
+    r = d.step(t + timedelta(minutes=50), 55.0, s, 1.0, False, True)       # the boiler tops out at 55 C
+    assert r.request is True
+    r = d.step(t + timedelta(minutes=95), 55.0, s, 1.0, False, True)       # maximum run time (90 min) is over
+    assert r.request is False and r.reason == "max_looptijd" and d.timeouts == 1
+    assert d.last_timeout["mode"] == "legionella" and d.last_timeout["tank"] == 55.0 and d.last_timeout["target"] == 60.0
+    # it used to start again at once and keep the pump on hot water around the clock; now the house gets its turn
+    for minutes in (100, 200, 600, 1300):
+        r = d.step(t + timedelta(minutes=minutes), 55.0, s, 0.5, False, True)
+        assert r.request is None and not r.active and r.reason == "wachten_na_timeout"
+    r = d.step(t + timedelta(minutes=95 + 24 * 60 + 1), 55.0, s, 1.0, False, True)          # a day later it tries again
+    assert r.mode == "legionella" and r.request is True
+
+
+def test_a_normal_hot_water_run_that_times_out_waits_six_hours():
+    s = {**DEFAULTS}
+    d = DhwController()
+    t = datetime(2026, 11, 12, 6, 0, tzinfo=TZ)
+    assert d.step(t, 30.0, s, 1.0, False, True).mode == "normal"           # below the minimum, but the target is never reached
+    assert d.step(t + timedelta(minutes=95), 40.0, s, 1.0, False, True).reason == "max_looptijd"
+    assert d.step(t + timedelta(hours=3), 38.0, s, 1.0, False, True).reason == "wachten_na_timeout"
+    assert d.step(t + timedelta(hours=8), 38.0, s, 1.0, False, True).mode == "normal"
+    # the wait survives a restart
+    d2 = DhwController(); d2.from_dict(d.to_dict())
+    assert d2.timeouts == 1 and d2.retry_after == d.retry_after and d2.last_timeout == d.last_timeout
+
+
+def test_legionella_waits_for_the_afternoon_unless_it_is_cheap_sunny_or_overdue():
+    s = {**DEFAULTS}
+    day = datetime(2026, 11, 12, 0, 0, tzinfo=TZ)
+
+    def start(hour, weight=1.0, pv=False, overdue=False):
+        d = DhwController()
+        d.last_legionella = day + timedelta(hours=hour) - (timedelta(days=9) if overdue else timedelta(days=7, hours=12))
+        return d.step(day + timedelta(hours=hour), 50.0, s, weight, pv, True).mode
+
+    assert start(3) == "idle"                      # no price sensor: not in the middle of the night
+    assert start(13) == "legionella"               # ... but in the afternoon
+    assert start(20) == "idle"
+    assert start(3, weight=0.7) == "legionella"    # a cheap hour (price control) may be at night
+    assert start(3, pv=True) == "legionella"       # a solar surplus too
+    assert start(13, weight=1.6) == "idle"         # expensive: wait
+    assert start(3, weight=1.6, overdue=True) == "legionella"      # a day overdue starts anyway
+
+
+def test_a_cold_guard_room_does_not_wind_up_the_integrator_or_teach_the_heating_curve():
+    ref, guard = SmartController(), SmartController()
+    for m in range(0, 240, 2):
+        kw = dict(room=20.4, floor=22.0, ret=24.0, freq=40.0, flow=28.0, switch_state="on")
+        ref.step(_inp(_t(m), **kw))
+        guard.step(_inp(_t(m), room_deficit=2.0, **kw))
+    assert ref.pi_i > 0.05                                            # the test is meaningful: the room lacks 0.6 K
+    assert guard.pi_i == pytest.approx(ref.pi_i)                      # the stored integrator only follows the real main room
+    assert guard._e_ema == pytest.approx(ref._e_ema)                  # ... and so does the heating-curve learning
+    assert guard.trim == ref.trim
+
+
+def test_the_return_water_dip_must_last_five_minutes_without_a_break():
+    c = SmartController()
+    kw = dict(room=20.0, outside=8.0, flow=12.0, switch_state="on", hvac_on=True)
+    c.step(_inp(_t(0), ret=7.0, **kw))                                 # below the limit (8 C): the timer starts
+    c.step(_inp(_t(2), ret=8.5, **kw))                                 # back in the 8-9 C band: the dip ended
+    d = c.step(_inp(_t(20), ret=7.0, **kw))                            # a new dip, much later: it starts counting from here
+    assert not d.frost
+    c.step(_inp(_t(23), ret=7.0, **kw))
+    assert c.step(_inp(_t(26), ret=7.0, **kw)).frost                   # 6 minutes below the limit in a row
+    assert c.step(_inp(_t(30), ret=8.5, **kw)).frost                   # released only 1 K above the limit
+    assert not c.step(_inp(_t(32), ret=9.1, **kw)).frost
+
+
+def test_price_units_are_turned_into_currency_per_kwh():
+    from engine.prices import price_factor
+    assert price_factor("EUR/kWh") == 1.0 and price_factor("€/kWh") == 1.0 and price_factor(None) == 1.0
+    assert price_factor("ct/kWh") == pytest.approx(0.01) and price_factor("c/kWh") == pytest.approx(0.01)
+    assert price_factor("€ct/kWh") == pytest.approx(0.01) and price_factor("øre/kWh") == pytest.approx(0.01)
+    assert price_factor("EUR/MWh") == pytest.approx(0.001) and price_factor("€/MWh") == pytest.approx(0.001)
+    assert price_factor("ct/MWh") == pytest.approx(0.00001)
+    assert price_factor("kWh") == 1.0 and price_factor("zomaar") == 1.0       # unknown: taken as it is
+
+
+def test_a_flat_price_list_stays_hourly_on_the_days_the_clock_changes():
+    from engine.prices import parse_price_forecast
+    for day, hours in ((datetime(2026, 10, 25, 12, 0, tzinfo=TZ), 25), (datetime(2026, 3, 29, 12, 0, tzinfo=TZ), 23),
+                       (datetime(2026, 11, 12, 12, 0, tzinfo=TZ), 24)):
+        slots = parse_price_forecast({"today": [round(0.1 + 0.01 * i, 2) for i in range(hours)]}, day)
+        assert len(slots) == hours
+        starts = [t.astimezone(timezone.utc) for t, _ in slots]
+        assert all((b - a) == timedelta(hours=1) for a, b in zip(starts, starts[1:]))        # exactly hourly, real time
+        assert all(t.astimezone(TZ).minute == 0 for t, _ in slots)                           # never 00:57 or 01:55
+        assert [t.astimezone(TZ).hour for t, _ in slots][:4] == ([0, 1, 3, 4] if hours == 23 else [0, 1, 2, 2 if hours == 25 else 3])

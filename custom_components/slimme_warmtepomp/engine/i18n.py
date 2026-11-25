@@ -34,6 +34,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "health_implausible": "{entity} meldt een onwaarschijnlijke waarde ({value:.1f}) voor {role}.",
         "health_outside": "De buitentemperatuur van je regeling ({a:.1f} °C) wijkt {diff:.0f} °C af van de buitensensor van de pomp ({b:.1f} °C). "
                           "Controleer welke sensor klopt.",
+        "dhw_title": "Warmtepomp: tapwater haalt de temperatuur niet",
+        "dhw_body": "De tapwaterronde ({mode}) heeft na de maximale looptijd het doel van {target:.0f} °C niet gehaald "
+                    "(boiler {tank:.0f} °C). De regeling probeert het pas over {wait:.0f} uur opnieuw en verwarmt het huis "
+                    "intussen gewoon. Controleer of de pomp dit doel kan halen (veel pompen halen zonder element maar ongeveer "
+                    "55 °C), verlaag de legionellatemperatuur of verhoog de maximale looptijd.",
+        "dhw_legionella": "legionellacyclus",
+        "dhw_normal": "gewoon verwarmen",
+        "dhw_topup": "bijladen",
         "week_title": "Weekrapport warmtepomp",
         "week_body": "Afgelopen {days} dagen: {kwh:.1f} kWh verbruikt (€ {cost:.2f}), COP {cop}, {kwh_dd} kWh per graaddag, "
                      "kamer {comfort} van de tijd binnen de comfortband, {starts} ontdooicycli, draaitijd {run_h:.1f} uur.",
@@ -66,6 +74,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "health_implausible": "{entity} reports an implausible value ({value:.1f}) for {role}.",
         "health_outside": "The outdoor temperature of your control ({a:.1f} °C) differs {diff:.0f} °C from the pump's own outdoor sensor ({b:.1f} °C). "
                           "Check which sensor is right.",
+        "dhw_title": "Heat pump: hot water does not reach its temperature",
+        "dhw_body": "The hot-water run ({mode}) did not reach its target of {target:.0f} °C within the maximum run time "
+                    "(tank {tank:.0f} °C). The control tries again in {wait:.0f} hours and keeps heating the house in the "
+                    "meantime. Check whether the pump can reach this target (many pumps only reach about 55 °C without an "
+                    "element), lower the legionella temperature or raise the maximum run time.",
+        "dhw_legionella": "legionella cycle",
+        "dhw_normal": "normal heating",
+        "dhw_topup": "top-up",
         "week_title": "Heat pump weekly report",
         "week_body": "Last {days} days: {kwh:.1f} kWh used (€ {cost:.2f}), COP {cop}, {kwh_dd} kWh per degree day, "
                      "room within the comfort band {comfort} of the time, {starts} defrost cycles, run time {run_h:.1f} hours.",

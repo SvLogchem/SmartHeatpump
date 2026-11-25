@@ -23,7 +23,7 @@ from .engine.rooms import combine as combine_rooms
 from .engine.health import SensorHealth
 from .engine.i18n import lang, msg, role_name
 from .engine.controller import Decision, Inputs, PROGRAM_DAY, SmartController
-from .engine.prices import parse_price_forecast
+from .engine.prices import parse_price_forecast, price_factor
 from .engine.settings import NUMBER_SPECS, DEFAULTS, PROFILE_PRESETS, SWITCH_DEFAULTS
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,6 +61,8 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         self.health = SensorHealth()
         self._issues: set[str] = set()
         self._notified: dict[str, datetime] = {}
+        self._dhw_timeouts_seen = 0
+        self._price_k = 1.0           # the factor the stored price history was built with (see _price_factor_check)
         self._cold_since: datetime | None = None
         self.week_report: str | None = None
         self.week_data: dict | None = None
@@ -107,6 +109,10 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             self.controller.import_state(data)
             saved = data.get("coordinator") or {}
             self._week_sent = saved.get("week_sent")
+            try:
+                self._price_k = float(saved.get("price_factor", 1.0))
+            except (TypeError, ValueError):
+                self._price_k = 1.0
             # when each message was last sent: without it every restart during frost or a sensor problem sends it again
             for kind, stamp in (saved.get("notified") or {}).items():
                 try:
@@ -120,8 +126,16 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
         recent = dt_util.utcnow() - timedelta(days=7)
         notified = {k: v.isoformat() for k, v in self._notified.items() if v >= recent}
         await self._store.async_save({**self.controller.export_state(), "coordinator": {
-            "week_sent": self._week_sent, "notified": notified}})
+            "week_sent": self._week_sent, "notified": notified, "price_factor": self._price_k}})
         self._saved_at = dt_util.utcnow()
+
+    def _price_factor_check(self, k: float) -> None:
+        """The rolling price history is stored in currency per kWh. If the unit of the price sensor was recognised
+        differently than when it was stored (an upgrade from before the unit was read, or another sensor), the old
+        samples are in another unit and would give a wrong reference price: start the history again."""
+        if abs(k - self._price_k) > 1e-12:
+            self.controller.prices.from_dict({})
+            self._price_k = k
 
     # ------------------------------------------------------------------ export / import
     EXPORT_MARK = "slimme_warmtepomp_export"
@@ -329,9 +343,15 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             cfg.get(CONF_ROOM_MODE, "hoofd"), self.settings.get("min_extra_kamer", 17.0))
 
         price_state = self._state(cfg.get(CONF_PRICE))
-        forecast = []
+        forecast, price_k = [], 1.0
         if price_state is not None:
-            forecast = parse_price_forecast(dict(price_state.attributes), now)
+            # everything inside the control works in currency per kWh (the settings and the cost sums): a sensor in
+            # ct/kWh or EUR/MWh is converted, the forecast attributes are taken to be in the same unit
+            price_k = price_factor(price_state.attributes.get("unit_of_measurement"))
+            forecast = [(t, p * price_k) for t, p in parse_price_forecast(dict(price_state.attributes), now)]
+        self._price_factor_check(price_k)
+        price_now = self._num(cfg.get(CONF_PRICE))
+        price_now = None if price_now is None else price_now * price_k
         pv = self._watts(cfg.get(CONF_PV))
 
         cloud_now = None
@@ -362,7 +382,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             flow=self._num(cfg.get(CONF_FLOW)), ret=self._num(cfg.get(CONF_RETURN)),
             floor=self._num(cfg.get(CONF_FLOOR)), freq=self._num(cfg.get(CONF_FREQ)),
             power_w=power, flow_lh=flow_lh, tank=self._num(cfg.get(CONF_DHW_TEMP)),
-            price_now=self._num(cfg.get(CONF_PRICE)), price_forecast=forecast, pv_w=pv,
+            price_now=price_now, price_forecast=forecast, pv_w=pv,
             weather=list(self._forecast), cloud_now=cloud_now,
             lat=self.hass.config.latitude, lon=self.hass.config.longitude,
             control_mode=cfg.get(CONF_CONTROL_MODE, "retour"),
@@ -421,7 +441,10 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             await self._call(ent, ent.split(".")[0], "turn_on" if d.switch == "on" else "turn_off", {})
         if d.dhw_request is not None and cfg.get(CONF_DHW_SWITCH):
             ent = cfg[CONF_DHW_SWITCH]
-            await self._call(ent, ent.split(".")[0], "turn_on" if d.dhw_request else "turn_off", {})
+            st = self._state(ent)
+            # during a run the request is repeated every cycle: only send it when the switch is not there yet
+            if st is None or st.state != ("on" if d.dhw_request else "off"):
+                await self._call(ent, ent.split(".")[0], "turn_on" if d.dhw_request else "turn_off", {})
             if d.dhw_request and d.dhw_setpoint and cfg.get(CONF_DHW_SETPOINT):
                 await self._set_number(cfg[CONF_DHW_SETPOINT], d.dhw_setpoint)
 
@@ -486,6 +509,27 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             L = self.language
             await self._notify("te_koud", msg(L, "cold_title"), msg(
                 L, "cold_body", hours=hours, room=inp.room, target=decision.room_setpoint, reason=decision.reason), now, every_h=12)
+
+    async def _notify_dhw(self, now) -> None:
+        """A hot-water run that hits its maximum run time without reaching the target (once per time-out)."""
+        dhw = self.controller.dhw
+        if dhw.timeouts <= self._dhw_timeouts_seen:
+            return
+        self._dhw_timeouts_seen = dhw.timeouts
+        last = dhw.last_timeout
+        if not last or dhw.retry_after is None:
+            return
+        L = self.language
+        try:
+            wait = (dhw.retry_after - datetime.fromisoformat(last["at"])).total_seconds() / 3600.0
+        except (KeyError, TypeError, ValueError):
+            wait = 0.0
+        try:
+            mode = msg(L, f"dhw_{last['mode']}")
+        except KeyError:
+            mode = str(last["mode"])
+        await self._notify("tapwater_timeout", msg(L, "dhw_title"), msg(
+            L, "dhw_body", mode=mode, target=last["target"], tank=last["tank"], wait=wait), now, every_h=12)
 
     # ------------------------------------------------------------------ sensor health (Repairs page)
     def _health_readings(self, now) -> dict:
@@ -589,6 +633,7 @@ class SmartHeatpumpCoordinator(DataUpdateCoordinator[Decision]):
             await self._notify_icing(decision, now)
             await self._notify_frost(decision, now)
             await self._notify_cold(decision, inp, now)
+            await self._notify_dhw(now)
             await self._check_health(now)
             await self._weekly_report(dt_util.now(), decision)
             # save at once when a defrost was counted (so a restart never loses it), else every N minutes

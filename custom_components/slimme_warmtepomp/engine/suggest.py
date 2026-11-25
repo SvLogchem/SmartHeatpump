@@ -83,7 +83,7 @@ def suggest(cands: list[Candidate], pump_platform: str | None = None) -> dict[st
             if s > 0:
                 ranked.append((s, -len(c.entity_id), role, c))
     ranked.sort(key=lambda x: (-x[0], x[1], x[3].entity_id))
-    for s, _, role, c in ranked:
+    for _score, _, role, c in ranked:
         if c.entity_id in used:
             continue
         if role == "debiet":

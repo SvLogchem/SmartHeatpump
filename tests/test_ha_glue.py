@@ -702,3 +702,122 @@ def test_guard_room_shortfall_reaches_the_controller_as_extra_demand_not_as_a_co
     h.states.set("sensor.room", "unavailable")
     inp = run(c._build_inputs())
     assert inp.room is None and inp.room_deficit == 0.0                        # no main sensor: hold, do not heat on the bedroom
+
+
+def test_a_price_in_cents_or_per_mwh_is_converted_to_currency_per_kwh():
+    def inputs_for(unit, value, raw):
+        h, entry = make_hass()
+        now = datetime.now().astimezone().replace(minute=0, second=0, microsecond=0)
+        attrs = {"raw_today": [{"start": (now + timedelta(hours=i)).isoformat(), "value": raw * (1 + i / 10)} for i in range(6)]}
+        if unit:
+            attrs["unit_of_measurement"] = unit
+        h.states.set("sensor.price", value, **attrs)
+        assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+        return run(entry.runtime_data._build_inputs()), entry.runtime_data
+    inp, _ = inputs_for("EUR/kWh", 0.25, 0.25)
+    assert inp.price_now == pytest.approx(0.25) and inp.price_forecast[0][1] == pytest.approx(0.25)
+    inp, c = inputs_for("ct/kWh", 25.0, 25.0)                       # a Nordpool-style sensor in cents
+    assert inp.price_now == pytest.approx(0.25) and inp.price_forecast[0][1] == pytest.approx(0.25)
+    assert inp.price_forecast[3][1] == pytest.approx(0.25 * 1.3)
+    inp, _ = inputs_for("EUR/MWh", 250.0, 250.0)
+    assert inp.price_now == pytest.approx(0.25) and inp.price_forecast[0][1] == pytest.approx(0.25)
+    inp, _ = inputs_for(None, 0.25, 0.25)                           # no unit: taken as it is (as before)
+    assert inp.price_now == pytest.approx(0.25)
+
+
+def test_the_stored_price_history_starts_again_when_the_unit_factor_changes():
+    h, entry = make_hass()
+    assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+    c = entry.runtime_data
+    import time
+    t_now = time.time()
+    c.controller.prices.samples = [(t_now - 700 * i, 25.0) for i in range(20)]      # samples in cents, from before the unit was read
+    c._price_factor_check(1.0)
+    assert c.controller.prices.samples                                    # same factor: kept
+    c._price_factor_check(0.01)
+    assert c.controller.prices.samples == [] and c._price_k == 0.01       # another factor: the old cents must not be the reference
+    c.controller.prices.samples = [(t_now - 700 * i, 0.25) for i in range(20)]
+    run(c.async_save())
+    h2, entry2 = make_hass()
+    h2.states.set("sensor.price", 25.0, unit_of_measurement="ct/kWh")
+    run(importlib.import_module(PKG).async_setup_entry(h2, entry2))
+    c2 = entry2.runtime_data
+    assert c2._price_k == 0.01 and len(c2.controller.prices.samples) >= 20           # remembered: the same unit keeps its history
+
+
+def _service_setup(tmp_path):
+    h, c, handlers = _export_setup(tmp_path)
+    users = {"admin": types.SimpleNamespace(is_admin=True), "tablet": types.SimpleNamespace(is_admin=False)}
+
+    async def get_user(uid):
+        return users.get(uid)
+    h.auth = types.SimpleNamespace(async_get_user=get_user)
+    return h, c, handlers
+
+
+def _call(user_id=None, **data):
+    return types.SimpleNamespace(data=data, context=types.SimpleNamespace(user_id=user_id))
+
+
+def test_reset_export_and_import_are_for_administrators_only(tmp_path):
+    from homeassistant.exceptions import Unauthorized, UnknownUser
+    h, c, handlers = _service_setup(tmp_path)
+    c.controller.model.learn_room(-0.1, 3.0, 15.0, 0.1)
+    learned = c.controller.model.windows_room
+    assert learned >= 1
+    for name in ("reset_model", "exporteer", "importeer"):
+        with pytest.raises(Unauthorized):
+            run(handlers[name](_call("tablet")))                       # a user without admin rights on a shared tablet
+        with pytest.raises(UnknownUser):
+            run(handlers[name](_call("verwijderd")))                    # a user that no longer exists
+    assert c.controller.model.windows_room == learned                  # nothing was wiped
+    out = run(handlers["exporteer"](_call("admin")))                    # an administrator may
+    assert "instellingen" in out
+    run(handlers["reset_model"](_call("admin", percentage=100)))
+    assert c.controller.model.windows_room == 0
+    run(handlers["importeer"](_call(None, data=out)))                   # an automation or script without a user may too
+    run(handlers["reset_model"](types.SimpleNamespace(data={})))        # ... and a call made by the integration itself
+
+
+def test_a_hot_water_time_out_sends_one_message_and_the_pump_is_left_alone():
+    from datetime import timezone
+    h, entry, c = _notify_setup(**{"dhw_enabled": True})
+    dhw = c.controller.dhw
+    t0 = datetime.now(timezone.utc)
+    dhw.last_legionella = t0 - timedelta(days=8)
+    s = c.settings
+    run(c.async_request_refresh())
+    h.services.calls.clear()
+    dhw._start(t0 - timedelta(minutes=200), "legionella", 60.0, "legionella_cyclus")           # a run that has lasted too long
+    dhw.step(t0, 54.0, {**s}, 1.0, False, True)
+    assert dhw.timeouts == 1 and dhw.retry_after is not None
+    run(c._notify_dhw(t0)); run(c._notify_dhw(t0 + timedelta(hours=1)))
+    sent = [x for x in h.services.calls if x[0] == "notify"]
+    assert len(sent) == 1 and "60" in sent[0][2]["message"] and "24" in sent[0][2]["message"]
+    assert "tapwater" in sent[0][2]["title"].lower()
+
+
+def test_the_hot_water_switch_is_not_told_to_turn_on_every_cycle():
+    import dataclasses
+    h, entry = make_hass()
+    assert run(importlib.import_module(PKG).async_setup_entry(h, entry)) is True
+    c = entry.runtime_data
+    h.services.calls.clear()
+    d = dataclasses.replace(c.data, dhw_request=True, dhw_setpoint=60.0, setpoint=None, switch=None)
+    run(c._execute(d))                                                     # switch.dhw is "off": turn it on
+    assert ("switch", "turn_on", {"entity_id": "switch.dhw"}) in h.services.calls
+    h.states.set("switch.dhw", "on")
+    h.services.calls.clear()
+    run(c._execute(d)); run(c._execute(d))                                 # already on: nothing to send
+    assert not [x for x in h.services.calls if x[0] == "switch"]
+    run(c._execute(dataclasses.replace(d, dhw_request=False)))             # and off again when asked
+    assert ("switch", "turn_off", {"entity_id": "switch.dhw"}) in h.services.calls
+
+
+def test_corrections_and_shortfalls_are_in_kelvin_not_degrees(setup):
+    h, entry, c = setup
+    by_id = {e.entity_id: e for _, e in h.entities}
+    for eid in ("sensor.slimme_wp_vloer_tekort", "sensor.slimme_wp_stooklijn_correctie"):
+        e = by_id[eid]
+        assert e._attr_native_unit_of_measurement == "K" and e._attr_device_class is None
+    assert by_id["number.slimme_wp_max_stroomprijs"]._attr_native_unit_of_measurement == "€/kWh"
