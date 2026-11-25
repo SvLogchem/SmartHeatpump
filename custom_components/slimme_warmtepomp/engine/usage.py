@@ -78,6 +78,7 @@ class UsageStats:
             out[f"kosten_{nm}"] = round(g(p, "cost"), 2)
         out["kwh_per_graaddag_dag"] = round(g("day", "kwh") / g("day", "dd"), 2) if g("day", "dd") >= MIN_DD_DAY else None
         out["kwh_per_graaddag_week"] = round(g("week", "kwh") / g("week", "dd"), 2) if g("week", "dd") >= MIN_DD_WEEK else None
+        out["kwh_per_graaddag_gisteren"] = self._yesterday_ratio()
         out["draaitijd_vandaag"] = round(g("day", "run_min"))
         out["draaitijd_per_start"] = round(g("day", "run_min") / starts_today) if starts_today else None
         out["ontdooien_vandaag"] = int(g("day", "defrosts"))
@@ -87,6 +88,15 @@ class UsageStats:
         out["ontdooien_7_dagen"] = int(past + g("day", "defrosts"))
         out.update(self._compare())
         return out
+
+    def _yesterday_ratio(self) -> float | None:
+        """kWh per degree day of the day before the current one: the final value of that day (None when it is
+        missing or was too mild). It keeps a fixed value all day, so it can be a statistics sensor."""
+        today = self.cur.get("day", {}).get("key")
+        if not today:
+            return None
+        y = self.history.get((datetime.fromisoformat(today) - timedelta(days=1)).date().isoformat())
+        return round(y["kwh"] / y["dd"], 2) if y and y["dd"] >= MIN_DD_DAY else None
 
     def _compare(self) -> dict:
         """Average kWh per degree day on days the smart control was mostly on, against mostly off."""

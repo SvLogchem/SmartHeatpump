@@ -45,6 +45,15 @@ const walk = (node, where) => {
     }
   };
   collect(cfg);
+  const buttons = [];
+  const findButtons = (node) => {
+    if (Array.isArray(node)) return node.forEach(findButtons);
+    if (node && typeof node === "object") {
+      if (node.type === "button") buttons.push({ entity: node.entity, confirmation: !!(node.tap_action && node.tap_action.confirmation) });
+      Object.values(node).forEach(findButtons);
+    }
+  };
+  findButtons(cfg);
   const EN = ctx.SlimmeWarmtepompDashboard.EN;
   const untranslated = [...names].filter((x) => x && !(x in EN) && !/^(Kamer|Ruimte|Flow) \d+$/.test(x));
   const settings = ctx.SlimmeWarmtepompDashboard.SETTINGS.flatMap((g) => g[2].map((r) => r[0]));
@@ -54,7 +63,7 @@ const walk = (node, where) => {
     strategies: ctx.customStrategies.map((s) => s.type), element: Object.keys(defined),
     settings, text_has_mini: text.includes("custom:mini-graph-card"), text_has_history: text.includes("history-graph"),
     overig: text.includes('"heading":"Overig"'), cfg_entities: refs.map(([id]) => id),
-    first_view_title: views[0] && views[0].title, names: [...names], markdown, untranslated,
+    first_view_title: views[0] && views[0].title, names: [...names], markdown, untranslated, buttons,
   }));
   // a second call with an empty state machine must give the explanatory page, not throw
   const empty = await strategy.generate({}, { states: {}, language: input.language });

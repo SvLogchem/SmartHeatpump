@@ -129,6 +129,36 @@ def test_every_dashboard_text_has_an_english_version():
     assert r["untranslated"] == [], r["untranslated"]
 
 
+def test_dashboard_follows_the_review_points():
+    r = _run(_states())
+    # the status is "bezig" (the switch is "actief"); reason and plan are in the header, not repeated as tiles
+    assert "Vorstbeveiliging bezig" in r["names"] and "Vorstbeveiliging actief" not in r["names"]
+    assert "sensor.slimme_wp_reden" not in r["cfg_entities"] and "sensor.slimme_wp_plan" not in r["cfg_entities"]
+    # statistics graphs use the "yesterday" sensors (a fixed value per day), not the running value
+    assert "sensor.slimme_wp_cop_gisteren" in r["cfg_entities"] and "sensor.slimme_wp_kwh_per_graaddag_gisteren" in r["cfg_entities"]
+    # new status and hot water parts
+    for eid in ("binary_sensor.slimme_wp_bivalent", "binary_sensor.slimme_wp_dhw_bezig", "sensor.slimme_wp_graaddagen_week"):
+        assert eid in r["cfg_entities"], eid
+    assert "Tapwater" in r["names"] and "Cyclus bezig" in r["names"]
+    md = "\n".join(r["markdown"])
+    assert "tapwater_wacht_tot" in md and "tapwater_laatste_timeout" in md
+    with_rooms = _run(_states(_config_with_rooms(["sensor.slaapkamer"], ["sensor.f1"])))     # the rooms card needs extra rooms
+    assert any("hoofdsensor_weg" in m for m in with_rooms["markdown"])
+    assert "is not none" in md                                       # the header never shows "None"
+    # relearning asks for confirmation
+    assert {"entity": "button.slimme_wp_opnieuw_aanleren", "confirmation": True} in r["buttons"]
+    # a correction is a difference: kelvin
+    assert "stooklijn_correctie') }} K." in md and "stooklijn_handmatig') }} K (" in md
+
+
+def test_hot_water_block_disappears_without_hot_water():
+    states = _states()
+    for eid in [e for e in states if "dhw" in e or e.endswith("tapwater_modus")]:
+        states.pop(eid)
+    r = _run(states)
+    assert "Cyclus bezig" not in r["names"] and r["missing"] == []
+
+
 DUTCH_WORDS = re.compile(r"\b(de|het|een|niet|nog|van|voor|bij|als|dat|wordt|geen|nu|vloer|buiten|kamer|gemeten|geleerd|tijd|uit|aan)\b", re.I)
 
 
