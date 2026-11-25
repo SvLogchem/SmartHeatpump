@@ -239,6 +239,7 @@
     "Basistemperatuur": "Base temperature", "Bediening": "Controls", "Bedtijd (vloer warm)": "Bedtime (floor warm)",
     "Berekend setpoint": "Calculated setpoint", "Bivalente temperatuur": "Bivalent temperature", "Blijft leren": "Keeps learning",
     "Boost": "Boost", "Boost bij tekort (°C)": "Boost at shortfall (°C)", "Boost frequentie (Hz)": "Boost frequency (Hz)",
+    "Bivalent": "Bivalent", "Cyclus bezig": "Cycle running", "Graaddagen week": "Degree days week", "Modus": "Mode", "Tapwater": "Hot water",
     "Bron vloertemperatuur": "Floor temperature source", "Buiten": "Outdoor", "Buiten nu": "Outdoor now", "COP": "COP",
     "COP laag tijdens draaien": "Low COP while running", "COP nu": "COP now", "COP per dag (30 dagen)": "COP per day (30 days)",
     "COP seizoen": "COP season", "COP vandaag": "COP today", "Coil en aanvoer rond ontdooien": "Coil and supply around defrosting",
@@ -310,7 +311,7 @@
     "Volgende ontdooi (min)": "Next defrost (min)", "Voorkeur stille uren": "Quiet hours preference",
     "Voorspelde afkoeling": "Predicted cooling", "Voorverwarmen": "Pre-heating",
     "Voorverwarmen en stille uren": "Pre-heating and quiet hours", "Vorstbeveiliging": "Frost protection",
-    "Vorstbeveiliging actief": "Frost protection active", "Vorstgrens buiten": "Frost limit outdoor",
+    "Vorstbeveiliging bezig": "Frost protection running", "Vorstgrens buiten": "Frost limit outdoor",
     "Vorstgrens retour": "Frost limit return", "Waakhond marge": "Watchdog margin",
     "Wachttijd na ontdooien (min)": "Wait after defrosting (min)", "Wachttijd voor boost (min)": "Wait before boost (min)",
     "Warm tapwater": "Hot water", "Warmtepomp": "Heat pump", "Warmtepomp aan/uit": "Heat pump on/off",
@@ -320,7 +321,7 @@
     "Zomer": "Summer", "Zomermodus stookgrens": "Summer mode heating limit", "Zonbijdrage": "Sun contribution",
     "Zoncompensatie": "Sun compensation", "Zonnepanelen": "Solar panels", "Zonnepanelen boost": "Solar panel boost",
     "Zonnepanelen drempel": "Solar panel threshold", "kWh maand": "kWh month",
-    "kWh per graaddag per week (12 weken)": "kWh per degree day per week (12 weeks)", "kWh vandaag": "kWh today", "kWh week": "kWh week",
+    "kWh per graaddag per dag (30 dagen)": "kWh per degree day per day (30 days)", "kWh vandaag": "kWh today", "kWh week": "kWh week",
     "kWh/graaddag regeling aan (28 d)": "kWh/degree day control on (28 d)",
     "kWh/graaddag regeling uit (28 d)": "kWh/degree day control off (28 d)", "kWh/graaddag vandaag": "kWh/degree day today",
     "kWh/graaddag week": "kWh/degree day week", "Meerdere ruimtes": "Several rooms", "Minimum extra ruimtes": "Minimum for extra rooms",
@@ -344,7 +345,7 @@
           { condition: "state", entity: `binary_sensor.${P}defrost`, state: "off" }] },
       { type: "tile", entity: `binary_sensor.${P}defrost`, name: "Ontdooien bezig", icon: "mdi:snowflake-melt", color: "light-blue",
         grid_options: { columns: 4 }, visibility: [{ condition: "state", entity: `binary_sensor.${P}defrost`, state: "on" }] },
-      { type: "tile", entity: `binary_sensor.${P}vorstbeveiliging`, name: "Vorstbeveiliging actief", icon: "mdi:snowflake-alert", color: "blue",
+      { type: "tile", entity: `binary_sensor.${P}vorstbeveiliging`, name: "Vorstbeveiliging bezig", icon: "mdi:snowflake-alert", color: "blue",
         grid_options: { columns: 4 }, visibility: [{ condition: "state", entity: `binary_sensor.${P}vorstbeveiliging`, state: "on" }] },
       { type: "tile", entity: `binary_sensor.${P}ijsvorming_alarm`, name: "Ijsvorming vermoed", icon: "mdi:snowflake-alert", color: "red",
         grid_options: { columns: 4 }, visibility: [{ condition: "state", entity: `binary_sensor.${P}ijsvorming_alarm`, state: "on" }] },
@@ -357,8 +358,7 @@
     const sections = cards([
       alerts.length ? { type: "grid", column_span: 3, cards: alerts } : null,
       grid([
-        heading("Regeling", "mdi:heat-pump", cards([badge(hass, `sensor.${P}cop`, "COP", null, "green"),
-          badge(hass, inp.buiten, "Buiten", "mdi:sun-thermometer", "grey")])),
+        heading("Regeling", "mdi:heat-pump"),
         ex(hass, CLIMATE) ? { type: "thermostat", entity: CLIMATE, name: "Warmtepomp regeling", show_current_as_primary: true,
           features: [{ type: "climate-preset-modes", style: "dropdown" }] } : null,
         SW("regeling_actief", "Slimme regeling", "mdi:brain", "green"),
@@ -371,8 +371,6 @@
       ]),
       grid([
         heading("Wat doet de regeling nu", "mdi:robot-outline"),
-        T("reden", "Reden", "mdi:robot-outline", "cyan", 12),
-        T("plan", "Plan", "mdi:calendar-clock", "cyan", 12),
         T("setpoint", "Berekend setpoint", "mdi:calculator", "orange"),
         tile(hass, inp.pomp_setpoint, "Setpoint in pomp", "mdi:water-thermometer", "red"),
         tile(hass, inp.frequentie, "Compressor", "mdi:sine-wave", "purple", 12),
@@ -385,6 +383,8 @@
         B("dure_stroom", "Dure stroom", "mdi:currency-eur-off", "red"),
         B("zomermodus", "Zomer", "mdi:weather-sunny", "amber"),
         B("sensor_probleem", "Sensor", "mdi:alert-circle", "red"),
+        B("bivalent", "Bivalent", "mdi:snowflake-thermometer", "blue"),
+        B("dhw_bezig", "Tapwater", "mdi:water-boiler", "cyan"),
       ]),
       rooms(hass, inp),
       grid([
@@ -425,16 +425,15 @@
       badge(hass, `sensor.${P}voorspelde_afkoeling`, "Verw. afkoeling", "mdi:thermometer-minus", "light-blue"),
       badge(hass, `sensor.${P}kamer_na_bedtijd`, "Kamer na bedtijd", "mdi:bed-clock", "pink"),
       badge(hass, `sensor.${P}vloer_gemeten`, "Vloer (gemeten)", "mdi:heating-coil", "purple"),
-      badge(hass, S, "Water setpoint", "mdi:water-thermometer", "orange"),
-      badge(hass, `sensor.${P}cop_vandaag`, "COP vandaag", "mdi:chart-line", "green"),
       badge(hass, inp.retour, "Retour wp", "mdi:heat-pump-outline", "accent"),
       badge(hass, inp.aanvoer, "Aanvoer wp", "mdi:heat-pump-outline", "red"),
     ]);
     return {
       title: "Slimme WP Overzicht", path: "slimme-overzicht", icon: "mdi:heat-pump", type: "sections", max_columns: 3,
       header: { layout: "center", badges_position: "bottom", card: { type: "markdown", text_only: true, content:
-        `{% set c = '${CLIMATE}' %}\n# {{ state_attr(c,'current_temperature') }} °C\n` +
-        `${t("Doel", "Target")} **{{ state_attr(c,'temperature') }} °C**{% if state_attr(c,'preset_mode') %} · {{ state_attr(c,'preset_mode') }}{% endif %}\n\n` +
+        `{% set c = '${CLIMATE}' %}\n{% set nu = state_attr(c,'current_temperature') %}\n{% set doel = state_attr(c,'temperature') %}\n` +
+        `# {{ (nu ~ ' °C') if nu is not none else '–' }}\n` +
+        `${t("Doel", "Target")} **{{ (doel ~ ' °C') if doel is not none else '–' }}**{% if state_attr(c,'preset_mode') %} · {{ state_attr(c,'preset_mode') }}{% endif %}\n\n` +
         `**${t("Nu", "Now")}:** {{ states('sensor.${P}reden') }}<br>\n**${t("Plan", "Plan")}:** {{ states('sensor.${P}plan') }}` } },
       badges, sections,
     };
@@ -450,7 +449,9 @@
       heading("Ruimtes", "mdi:home-thermometer"),
       tile(hass, inp.kamer, "Hoofdruimte", "mdi:sofa", "orange"),
       ...extra.map(([i, entity]) => tile(hass, entity, `Ruimte ${i}`, "mdi:bed", "pink")),
-      markdown(null, `{% set k = state_attr('${S}','kamers') %}{% if k %}${t("Modus", "Mode")}: **{{ ${modes}[k.modus] }}**<br>\n` +
+      markdown(null, `{% set k = state_attr('${S}','kamers') %}{% if k and k.reden == 'hoofdsensor_weg' %}` +
+        `${t("De sensor van de hoofdruimte ontbreekt: de regeling houdt de laatste stand vast.", "The main room sensor is missing: the control keeps its last state.")}` +
+        `{% elif k %}${t("Modus", "Mode")}: **{{ ${modes}[k.modus] }}**<br>\n` +
         `${t("De regeling rekent met", "The control uses")} **{{ k.gebruikt }} °C**{% if k.tekort_bewaakt %} ` +
         `(${t("bewaking vraagt", "guard asks for")} **+{{ k.tekort_bewaakt }} K**){% endif %}{% endif %}`, "full"),
     ]);
@@ -491,8 +492,8 @@
       markdown("Geleerde stooklijn",
         `{% set c = state_attr('${S}','geleerde_stooklijn') %}\n{% if c %}\n| ${t("Buiten", "Outdoor")} | ${t("Water", "Water")} |\n|---|---|\n` +
         `{% for k, v in c.items() %}| {{ k }} °C | {{ v }} °C |\n{% endfor %}\n` +
-        `${t("Eigen correctie op de stooklijn", "Own correction on the heating curve")}: {{ state_attr('${S}','stooklijn_handmatig') }} °C (${t("instellingen", "settings")}), ` +
-        `${t("geleerde correctie", "learned correction")} {{ state_attr('${S}','stooklijn_correctie') }} °C.\n` +
+        `${t("Eigen correctie op de stooklijn", "Own correction on the heating curve")}: {{ state_attr('${S}','stooklijn_handmatig') }} K (${t("instellingen", "settings")}), ` +
+        `${t("geleerde correctie", "learned correction")} {{ state_attr('${S}','stooklijn_correctie') }} K.\n` +
         `{% else %}${t("Het model is nog niet betrouwbaar genoeg.", "The model is not reliable enough yet.")}{% endif %}`),
     ];
     for (const t of tables) { if (!t.grid_options) t.grid_options = { columns: "full" }; }
@@ -567,8 +568,12 @@
         sw("modulatie_actief", "Zacht draaien"), sw("prijssturing_actief", "Prijssturing"), sw("tekort_boost_actief", "Tekort-boost"),
         sw("vorstbeveiliging_actief", "Vorstbeveiliging"), sw("dhw_actief", "Tapwatersturing"), sw("weekrapport_actief", "Weekrapport versturen"),
         sw("kosten_vaste_prijs", "Kosten met vaste prijs"),
-        ex(hass, `button.${P}opnieuw_aanleren`) ? { entity: `button.${P}opnieuw_aanleren`, name: "Opnieuw aanleren starten", icon: "mdi:restart-alert" } : null,
       ]) },
+      ex(hass, `button.${P}opnieuw_aanleren`) ? { type: "button", entity: `button.${P}opnieuw_aanleren`, name: "Opnieuw aanleren starten",
+        icon: "mdi:restart-alert", show_state: false, tap_action: { action: "perform-action", perform_action: "button.press",
+          target: { entity_id: `button.${P}opnieuw_aanleren` }, confirmation: { text: t(
+            "Het geleerde wordt voor het ingestelde percentage gewist. Doorgaan?",
+            "The learned data is erased for the set percentage. Continue?") } } } : null,
     ]);
     cols[0].unshift(...extra);
     return {
@@ -608,6 +613,20 @@
         t2(inp.zonnepanelen, "Zonnepanelen", "mdi:solar-power", "amber"),
         t2(inp.net, "Netvermogen", "mdi:transmission-tower", "grey"),
       ]),
+      ex(hass, `sensor.${P}tapwater_modus`) ? grid([
+        heading("Tapwater", "mdi:water-boiler"),
+        tile(hass, `sensor.${P}tapwater_modus`, "Modus", "mdi:water-boiler", "blue", 6),
+        tile(hass, `binary_sensor.${P}dhw_bezig`, "Cyclus bezig", "mdi:water-boiler", "cyan", 6),
+        markdown(null,
+          `{% set w = state_attr('${S}','tapwater_wacht_tot') %}\n{% set lt = state_attr('${S}','tapwater_laatste_timeout') %}\n` +
+          `{% set namen = {'legionella': '${t("legionellacyclus", "legionella cycle")}', 'normal': '${t("tapwatercyclus", "hot water cycle")}', ` +
+          `'topup': '${t("bijladen", "top-up")}'} %}\n{% set wacht = w and as_timestamp(w) > as_timestamp(now()) %}\n` +
+          `{% if wacht %}${t("De regeling wacht met een nieuwe poging tot", "The control waits with a new attempt until")} ` +
+          `**{{ as_timestamp(w) | timestamp_custom('%d-%m %H:%M') }}**.<br>\n{% endif %}` +
+          `{% if lt %}${t("Laatste time-out", "Last time-out")}: {{ namen.get(lt.mode, lt.mode) }} ${t("op", "at")} ` +
+          `{{ as_timestamp(lt.at) | timestamp_custom('%d-%m %H:%M') }} (${t("vat", "tank")} {{ lt.tank }} °C, ${t("doel", "target")} {{ lt.target }} °C).\n{% endif %}` +
+          `{% if not wacht and not lt %}${t("Geen time-outs geweest.", "No time-outs so far.")}{% endif %}`, "full"),
+      ]) : null,
       grid([
         heading("Ontdooien en ijsvorming", "mdi:snowflake-melt"),
         tile(hass, `sensor.${P}ijsvorming`, "Ijsvorming", "mdi:snowflake-alert", "red", 6),
@@ -680,7 +699,9 @@
         weekly(hass),
         grid([
           heading("Efficiëntie", "mdi:chart-timeline-variant"),
-          T("graaddagen_dag", "Graaddagen vandaag", "mdi:thermometer-minus", "blue", 6), T("graaddagen_maand", "Graaddagen maand", "mdi:thermometer-minus", "blue", 6),
+          T("graaddagen_dag", "Graaddagen vandaag", "mdi:thermometer-minus", "blue", 4, true),
+          T("graaddagen_week", "Graaddagen week", "mdi:thermometer-minus", "blue", 4, true),
+          T("graaddagen_maand", "Graaddagen maand", "mdi:thermometer-minus", "blue", 4, true),
           T("kwh_per_graaddag", "kWh/graaddag vandaag", "mdi:chart-timeline-variant", "purple", 6),
           T("kwh_per_graaddag_week", "kWh/graaddag week", "mdi:chart-timeline-variant", "purple", 6),
           T("cop_vandaag", "COP vandaag", "mdi:chart-line", "green", 6), T("cop_seizoen", "COP seizoen", "mdi:chart-line", "green", 6),
@@ -707,8 +728,8 @@
           sw("regeling_actief", "Slimme regeling", "mdi:brain", "green", 12),
           T("kwh_graaddag_regeling", "kWh/graaddag regeling aan (28 d)", "mdi:brain", "green", 6),
           T("kwh_graaddag_schaduw", "kWh/graaddag regeling uit (28 d)", "mdi:brain", "grey", 6),
-          stats(hass, `sensor.${P}kwh_per_graaddag`, "kWh per graaddag per week (12 weken)", "week", "mean", "bar", 84),
-          stats(hass, `sensor.${P}cop_vandaag`, "COP per dag (30 dagen)", "day", "max", "line", 30),
+          stats(hass, `sensor.${P}kwh_per_graaddag_gisteren`, "kWh per graaddag per dag (30 dagen)", "day", "max", "bar", 30),
+          stats(hass, `sensor.${P}cop_gisteren`, "COP per dag (30 dagen)", "day", "max", "bar", 30),
           ex(hass, `switch.${P}regeling_actief`) ? { type: "history-graph", title: "Slimme regeling aan/uit (30 dagen)", hours_to_show: 720,
             grid_options: { columns: "full" }, entities: [{ entity: `switch.${P}regeling_actief`, name: "Slimme regeling" }] } : null,
         ], { column_span: 3 }),

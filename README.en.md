@@ -142,7 +142,7 @@ strategy:
   type: custom:slimme-warmtepomp
 ```
 
-Tabs: **Overview** (status, switches, what the control is doing, rooms, performance, trend), **Learning** (model confidence and the learned tables), **Settings** (every setting, grouped), **Heat pump** (your own sensors incl. every flow sensor, and charts) and **Costs & analysis** (incl. the weekly report). Charts use *mini-graph-card* when you have it (HACS), otherwise the built-in history graph. If it does not show up in the list, add `/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js` as a JavaScript module resource.
+Tabs: **Overview** (status, switches, what the control is doing, rooms, performance, trend), **Learning** (model confidence and the learned tables), **Settings** (every setting, grouped), **Heat pump** (your own sensors incl. every flow sensor, and charts) and **Costs & analysis** (incl. the weekly report). Charts use *mini-graph-card* when you have it (HACS), otherwise the built-in history graph; the history graph *Control on/off (30 days)* shows at most what the recorder keeps (10 days by default; set `purge_keep_days: 30` under `recorder:` for all 30). If it does not show up in the list, add `/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js` as a JavaScript module resource.
 
 ## Entities
 
@@ -158,6 +158,14 @@ Tabs: **Overview** (status, switches, what the control is doing, rooms, performa
 - The model is a two-node model (floor + room) with the return or floor temperature as floor proxy. With a very heavy screed and cold evenings it can overshoot; lower *Tolerance Too Warm* or use a real floor sensor.
 - Price forecasts are recognised from the shape of the attributes; check the attributes of *Calculated Setpoint* to see whether a forecast is used.
 - Tested with a simulated house and a simulated Home Assistant environment (see `tests/`); the setup wizard, repairs and dashboard have not been run in a real installation yet. Please report anything odd.
+
+## Changelog (v2.18.3)
+
+- `sensor.slimme_wp_cop_gisteren` and `sensor.slimme_wp_starts_gisteren` now have `state_class: measurement`, and there is a new sensor `sensor.slimme_wp_kwh_per_graaddag_gisteren` (the final value of yesterday, empty after a day too mild to tell). Home Assistant therefore keeps statistics of them. The running values of today change all day, so their daily maximum came out too high; each bar of a statistics graph on the "yesterday" sensors is one day behind. A new sensor builds statistics from now on.
+- The generated dashboard uses those sensors for *COP per day* and *kWh per degree day per day* (30 days).
+- In the dashboard the status is called *Frost protection running* (the switch stays *active*). *Reason* and *Plan* only appear in the header now; the header badges *Water setpoint* and *COP today* and the badges at *Control* are gone (they were on the same page already). The header shows "–" instead of "None °C" while the thermostat is unavailable.
+- New in the dashboard: tiles *Bivalent* and *Hot water*, *Degree days week*, a *Hot water* block on the *Heat pump* page (mode, cycle running, wait after a time-out and the last time-out) and a message in the rooms card when the main sensor is missing. Heating-curve corrections are shown in K. *Start relearning* is a button that asks for confirmation.
+- Deliberately unchanged: `state_class` of the day, week and month counters stays `measurement`. With `total` Home Assistant no longer keeps a maximum, which the *Costs per day* graph uses.
 
 ## Changelog (v2.18.2)
 

@@ -821,3 +821,15 @@ def test_corrections_and_shortfalls_are_in_kelvin_not_degrees(setup):
         e = by_id[eid]
         assert e._attr_native_unit_of_measurement == "K" and e._attr_device_class is None
     assert by_id["number.slimme_wp_max_stroomprijs"]._attr_native_unit_of_measurement == "€/kWh"
+
+
+def test_yesterday_sensors_can_be_used_for_statistics(setup):
+    from homeassistant.components.sensor import SensorStateClass
+    from engine.names_en import entity_name
+    h, entry, c = setup
+    by_id = {e.entity_id: e for _, e in h.entities}
+    for eid in ("cop_gisteren", "starts_gisteren", "kwh_per_graaddag_gisteren"):
+        e = by_id[f"sensor.slimme_wp_{eid}"]
+        assert e._attr_state_class == SensorStateClass.MEASUREMENT, eid
+    assert by_id["sensor.slimme_wp_kwh_per_graaddag_gisteren"]._attr_native_unit_of_measurement == "kWh/°Cd"
+    assert entity_name("Slimme WP kWh Per Graaddag Gisteren", "en") == "Smart HP kWh Per Degree Day Yesterday"

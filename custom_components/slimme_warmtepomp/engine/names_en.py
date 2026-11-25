@@ -140,6 +140,7 @@ NAMES_EN: dict[str, str] = {
     "Slimme WP kWh Per Graaddag": "Smart HP kWh Per Degree Day",
     "Slimme WP kWh Per Graaddag (Regeling Aan)": "Smart HP kWh Per Degree Day (Control On)",
     "Slimme WP kWh Per Graaddag (Regeling Uit)": "Smart HP kWh Per Degree Day (Control Off)",
+    "Slimme WP kWh Per Graaddag Gisteren": "Smart HP kWh Per Degree Day Yesterday",
     "Slimme WP kWh Per Graaddag Week": "Smart HP kWh Per Degree Day Week",
     # switches
     "Slimme Regeling Actief": "Smart Control Active",

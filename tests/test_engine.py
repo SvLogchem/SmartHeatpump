@@ -762,6 +762,30 @@ def test_usage_mild_day_has_no_kwh_per_degree_day_and_base_is_adjustable():
     assert u2.summary()["graaddagen_dag"] == pytest.approx(1.0, abs=0.02)
 
 
+def test_usage_yesterday_ratio_is_the_final_value_of_the_day_before_and_stays_fixed():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    t = datetime(2026, 11, 16, 0, 0, tzinfo=TZ)
+    _usage_run(u, t, 24 * 60, step=10.0)                                        # 8 °C all day, 1 kW: 24 kWh over 10 degree days
+    assert u.summary()["kwh_per_graaddag_gisteren"] is None                    # no finished day yet
+    _usage_run(u, t + timedelta(days=1), 60, step=10.0)                        # the first hour of the next day closes day 1
+    first = u.summary()["kwh_per_graaddag_gisteren"]
+    assert first == pytest.approx(2.4, abs=0.05)
+    _usage_run(u, t + timedelta(days=1, hours=1), 12 * 60, outside=0.0, step=10.0)    # the rest of the day changes nothing
+    assert u.summary()["kwh_per_graaddag_gisteren"] == first
+    _usage_run(u, t + timedelta(days=3), 10, step=10.0)                        # day 3 never ran: no value for "yesterday"
+    assert u.summary()["kwh_per_graaddag_gisteren"] is None
+
+
+def test_usage_yesterday_ratio_is_empty_after_a_mild_day():
+    from engine.usage import UsageStats
+    u = UsageStats()
+    t = datetime(2026, 11, 16, 0, 0, tzinfo=TZ)
+    _usage_run(u, t, 24 * 60, outside=19.0, step=10.0)
+    _usage_run(u, t + timedelta(days=1), 20, step=10.0)
+    assert u.summary()["kwh_per_graaddag_gisteren"] is None
+
+
 def test_usage_counts_defrosts_with_debounce_and_resets_per_period():
     from engine.usage import UsageStats
     u = UsageStats()
