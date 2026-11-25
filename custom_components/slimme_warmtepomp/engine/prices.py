@@ -7,7 +7,7 @@ a state attribute, only with different key names.
 from __future__ import annotations
 
 import statistics
-from datetime import datetime, timedelta, tzinfo
+from datetime import datetime, timedelta, timezone, tzinfo
 
 TIME_KEYS = ("start", "start_time", "from", "time", "datetime", "begin", "date")
 PRICE_KEYS = ("value", "price", "price_per_kwh", "total", "marketPrice", "energy", "amount")
@@ -39,6 +39,38 @@ def _slots_from_dicts(items, tz: tzinfo) -> list[tuple[datetime, float]]:
     return out
 
 
+# currency "minor units": a price in these is 100 times the price in the main unit (euro, krone, pound, ...)
+_MINOR = ("ct", "cent", "cents", "c", "eurct", "eurocent", "euroct", "€ct", "€c", "¢", "øre", "öre", "ore", "p", "pence")
+
+
+def price_factor(unit) -> float:
+    """Multiplier that turns a price in ``unit`` into a price per kWh in the main currency unit.
+
+    "EUR/kWh" -> 1, "ct/kWh" (cents) -> 0.01, "EUR/MWh" -> 0.001, "ct/MWh" -> 0.00001. Without a (recognisable)
+    unit the value is taken as it is: that is what the price sensors of most integrations already give."""
+    u = str(unit or "").strip().lower().replace(" ", "")
+    if "/" not in u:
+        return 1.0
+    num, _, den = u.partition("/")
+    factor = 1.0
+    if den == "mwh":
+        factor /= 1000.0
+    elif den == "wh":
+        factor *= 1000.0
+    if num in _MINOR:
+        factor /= 100.0
+    return factor
+
+
+def _day_slots(day: datetime, n: int) -> list[datetime]:
+    """Start times of n equal slots over one local day, over its real length: 23, 24 or 25 hours on the two days a
+    year the clock changes (24 h / n would put the slots at 00:57, 01:55, ...). In UTC, so the two 02:00 hours of
+    a 25-hour day stay two different slots."""
+    start, end = day.astimezone(timezone.utc), (day + timedelta(days=1)).astimezone(timezone.utc)
+    step = (end - start) / n
+    return [start + step * i for i in range(n)]
+
+
 def parse_price_forecast(attributes: dict, now: datetime) -> list[tuple[datetime, float]]:
     """Return a sorted list of (slot start, price) from a sensor's attributes."""
     tz = now.tzinfo
@@ -52,9 +84,8 @@ def parse_price_forecast(attributes: dict, now: datetime) -> list[tuple[datetime
                 day = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 if "tomorrow" in key:
                     day += timedelta(days=1)
-                step = timedelta(hours=24) / len(val)
-                for i, p in enumerate(val):
-                    slots.setdefault(day + step * i, float(p))
+                for t, p in zip(_day_slots(day, len(val)), val):
+                    slots.setdefault(t, float(p))
     return sorted(slots.items())
 
 

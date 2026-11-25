@@ -9,7 +9,7 @@ import voluptuous as vol
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, Unauthorized, UnknownUser
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
@@ -63,8 +63,24 @@ async def _register_dashboard_strategy(hass: HomeAssistant) -> None:
                         "manually with 'strategy: type: custom:slimme-warmtepomp' once the file is available", err)
 
 
+async def _admin_only(hass: HomeAssistant, call: ServiceCall) -> None:
+    """The actions change or wipe what the integration has learned: only administrators may call them from the UI,
+    the API or a script run by a user. (Automations, which have no user, are fine. This is what
+    ``async_register_admin_service`` does, written out so the actions can also return a response.)"""
+    ctx = getattr(call, "context", None)
+    user_id = getattr(ctx, "user_id", None)
+    if not user_id:
+        return
+    user = await hass.auth.async_get_user(user_id)
+    if user is None:
+        raise UnknownUser(context=ctx)
+    if not user.is_admin:
+        raise Unauthorized(context=ctx)
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def _reset(call: ServiceCall) -> None:
+        await _admin_only(hass, call)
         for entry in hass.config_entries.async_entries(DOMAIN):
             coordinator = getattr(entry, "runtime_data", None)
             if coordinator is not None:
@@ -87,12 +103,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return bool(call.data.get("pompkennis", True)), bool(call.data.get("huiskennis", False))
 
     async def _export(call: ServiceCall) -> dict:
+        await _admin_only(hass, call)
         bundle = _coordinator().export_bundle(*_knowledge(call))
         path = hass.config.path(EXPORT_FILE)
         await hass.async_add_executor_job(_write_json, path, bundle)
         return {"bestand": EXPORT_FILE, **bundle}
 
     async def _import(call: ServiceCall) -> dict:
+        await _admin_only(hass, call)
         bundle = call.data.get("data")
         if not bundle:
             path = hass.config.path(EXPORT_FILE)

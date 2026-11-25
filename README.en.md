@@ -13,7 +13,7 @@ Everything user-facing is available in English and Dutch: the setup wizard, repa
 - **Learns your house.** From your sensors it learns how fast the house cools, how slowly the floor heats up and cools down and how much the sun contributes. A heating curve of its own follows from that. Until the model has enough data (about 2-3 days) your manual heating curve is used and gradually replaced.
 - **Floor warm at bedtime.** The planner looks ahead (weather, sun, day/night setpoints) and pre-heats the floor *before* bedtime so the room does not drop below the setpoint afterwards and the pump does not have to recover hard at night. An evening correction learns: if the room was too cold one hour after bedtime, the floor is charged a bit further the next day.
 - **Quiet hours.** From bedtime to the end of the night the maximum storage is limited and energy use weighs more.
-- **Electricity price (optional).** With a price sensor that has a forecast (Nordpool, EPEX Spot, Frank Energie, ENTSO-E, …) heat is shifted to cheaper hours, within the comfort tolerance.
+- **Electricity price (optional).** With a price sensor that has a forecast (Nordpool, EPEX Spot, Frank Energie, ENTSO-E, …) heat is shifted to cheaper hours, within the comfort tolerance. The unit of the sensor is read and converted to currency per kWh, so a price in ct/kWh or EUR/MWh works too.
 - **Solar panels (optional).** With a surplus, power counts for less and *Solar Panel Boost* can store extra heat in the floor.
 - **Hot water (optional).** Tank temperature sensor plus a switch gives you a minimum temperature, charging on cheap/sunny hours, a legionella cycle and a maximum run time.
 - **Compressor protection.** Minimum run and off time, no short cycling from rounding (setpoints are averaged over time), defrost detection, summer mode on the 24-hour average, frost protection and a minimum room temperature.
@@ -83,6 +83,8 @@ For a new installation, a backup, or to share your settings:
   - `pompkennis` (pump knowledge, on by default): the frequency table and defrost behaviour. That belongs to the pump and is useful for anyone with the same pump.
   - `huiskennis` (house knowledge, off by default): the house model (cooling time, floor), the evening correction, the heating curve and the statistics. That belongs to your house; in another house it would control wrongly for weeks until it is unlearned. Only switch it on for a backup of your own installation.
 - `slimme_warmtepomp.importeer` reads that file (or the `data` you pass) and applies it, with the same two choices. Values are kept within the allowed limits; anything that could not be applied is listed in the response. Whatever is not in the export is left alone: an export with only pump knowledge leaves your own house model as it is.
+
+The actions `reset_model`, `exporteer` and `importeer` can only be called by administrators (and by automations and scripts without a user). A user without admin rights, for example on a shared tablet, cannot wipe the learned model.
 
 Your sensor links are deliberately not included: they belong to your installation.
 
@@ -156,6 +158,20 @@ Tabs: **Overview** (status, switches, what the control is doing, rooms, performa
 - The model is a two-node model (floor + room) with the return or floor temperature as floor proxy. With a very heavy screed and cold evenings it can overshoot; lower *Tolerance Too Warm* or use a real floor sensor.
 - Price forecasts are recognised from the shape of the attributes; check the attributes of *Calculated Setpoint* to see whether a forecast is used.
 - Tested with a simulated house and a simulated Home Assistant environment (see `tests/`); the setup wizard, repairs and dashboard have not been run in a real installation yet. Please report anything odd.
+
+## Changelog (v2.18.2)
+
+- Hot water: a run that does not reach its target (for example legionella at 60 °C with a tank that reaches 55 °C) started again at once and kept the pump on hot water all day, with no space heating. After the maximum run time there is now a wait (24 hours for legionella, 6 hours for normal heating) and a notification; the house is heated in the meantime. The wait survives a restart (attribute `tapwater_wacht_tot`).
+- Without a price sensor the legionella cycle starts in the afternoon (12:00 to 17:00) instead of straight away, also at night. With a cheap hour or a solar surplus it can still start earlier, and a day overdue it always starts.
+- A cold guard room no longer feeds the stored integrator or the heating-curve learning either; they only see the real main room. The shortfall counts only as extra heat demand.
+- Electricity price: the unit of the sensor is read and converted to currency per kWh (ct/kWh, EUR/MWh). If the unit differs from before, the stored price history starts again.
+- `reset_model`, `exporteer` and `importeer` are for administrators only (automations and scripts without a user are fine).
+- Flat price lists (`today`/`tomorrow`) stay hourly on the days the clock changes (23, 24 or 25 slots), not at 00:57 and 01:55.
+- The frost return-water check clears its start time when the water is back above the limit, so the 5 minutes must really be in a row.
+- *Learned Heating Curve Correction* and *Floor Heat Shortfall* use unit K instead of °C (they are differences). *Max Electricity Price* has unit €/kWh.
+- No more `turn_on` to the hot-water switch every 2 minutes; only if it is not on yet.
+- The generated dashboard assumes the default entity IDs (`sensor.slimme_wp_setpoint`, `climate.slimme_wp_thermostaat`, ...): if you rename one, its card disappears silently.
+- Still open: `state_class` of the day, week and month counters, the 142 entities none of which is disabled by default, the sensor-type filter in the wizard, the first control cycle after the platforms load, "Night" in the thermostat and the unit of *Expected Sun Reduction*. Those touch existing statistics or the design and I would like to agree on them first.
 
 ## Changelog (v2.18.1)
 

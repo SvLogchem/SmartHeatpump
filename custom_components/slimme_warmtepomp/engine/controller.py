@@ -862,8 +862,8 @@ class SmartController:
 
         # ---- heating-curve trim: learn the lasting (6 h average) room error, not the planned transients
         if (inp.learning_enabled and not (manual_active or window_active or away_active or settling or self.summer)
-                and pl.delta_now <= 0.05 and not d.preheating):
-            e_raw = sp_now - tr       # only the part outside the comfort tolerance counts (planned dips are fine)
+                and pl.delta_now <= 0.05):      # (no learning while the plan is pre-heating)
+            e_raw = sp_now - tr_main  # the real main room (a cold guard room must not teach the curve); only the part outside the tolerance counts
             e_eff = max(0.0, e_raw - s["tolerantie_laag"]) if e_raw > 0 else min(0.0, e_raw + s["tolerantie_hoog"] + 0.3)
             self._e_ema += (1.0 - math.exp(-dt_h / TRIM_TAU_H)) * (e_eff - self._e_ema)
             if abs(self._e_ema) > 0.15 and boost is None:
@@ -884,16 +884,17 @@ class SmartController:
                         else "netlimiet" if grid_block else "dure_stroom" if cap_coast
                         else "te_warm" if over else "uitlopen" if plan_coast else "wacht_draaitijd")
         else:
-            e = sp_now - tr
+            e = sp_now - tr           # what the heating asks for now: includes the shortfall of a guard room
+            e_main = sp_now - tr_main  # what the main room really lacks: only this one feeds the (stored) integrator
             # no extra push while the room is already recovering by itself
-            if e > 0.3 and self._tr_rate < 0.15:
+            if e_main > 0.3 and self._tr_rate < 0.15:
                 ki = KI_UP
-            elif e < -0.1:
+            elif e_main < -0.1:
                 ki = KI_DOWN
             else:
                 ki = KI
-            self.pi_i = _clamp(self.pi_i + ki * e * dt_h, -2.0, PI_MAX)
-            if abs(e) < 0.1:
+            self.pi_i = _clamp(self.pi_i + ki * e_main * dt_h, -2.0, PI_MAX)
+            if abs(e_main) < 0.1:
                 self.pi_i *= 1.0 - min(1.0, 0.2 * dt_h)
             delta = min(pl.delta_now, s["stille_boost_max"]) if in_quiet else pl.delta_now
             kp = KP_PLANNED if plan_ok else KP
@@ -1074,8 +1075,10 @@ class SmartController:
             self._ret_low_since = self._ret_low_since or now
             if now - self._ret_low_since >= timedelta(minutes=5):
                 self._frost_water = True
-        elif inp.ret is None or inp.ret >= s["vorst_retour"] + 1.0:
-            self._ret_low_since, self._frost_water = None, False
+        else:
+            self._ret_low_since = None          # the 5 minutes must be continuous: a dip that ended does not count later
+            if inp.ret is None or inp.ret >= s["vorst_retour"] + 1.0:
+                self._frost_water = False       # released only 1 K above the limit (hysteresis)
         water = self._frost_water
         d.frost = self._frost_cold or water
         self.frost_reason = "water" if water else "buiten" if self._frost_cold else None
@@ -1099,6 +1102,8 @@ class SmartController:
             "tekort_boost": self._boost or "uit", "vloer_aanhouden": self._floor_hold, "stooklijn_correctie": round(self.trim_at(self._to_now), 2) if self._to_now is not None else None, "stooklijn_handmatig": round(self.curve_corr(self._to_now) - self.trim_at(self._to_now), 2) if self._to_now is not None else None, "vloer_tekort": _r(self._floor_gap), "vloer_gemeten": _r(self._f_meas),
             "gemiddelde_buiten_24u": _r(self.summer_mean),
             "tapwater_modus": self.dhw.mode,
+            "tapwater_wacht_tot": self.dhw.retry_after.isoformat() if self.dhw.retry_after else None,
+            "tapwater_laatste_timeout": self.dhw.last_timeout,
             "geleerde_stooklijn": self._learned_curve(s),
             "vloer_setpoint_tabel": self._floor_table(s),
             "ontdooien": self.defl.summary(),

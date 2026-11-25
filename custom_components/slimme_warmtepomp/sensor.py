@@ -127,10 +127,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
                        SensorDeviceClass.TEMPERATURE, M, D, entity_suffix="vloer_geschat"),
         DecisionSensor(c, "vloer_gemeten", "Slimme WP Vloertemperatuur (gemeten)", _diag("vloer_gemeten"), TEMP,
                        SensorDeviceClass.TEMPERATURE, M, D, entity_suffix="vloer_gemeten"),
+        # a correction and a shortfall are temperature differences (K), not temperatures: with the temperature class
+        # Home Assistant would convert them with an offset for a user who shows degrees Fahrenheit
         DecisionSensor(c, "stooklijn_correctie", "Slimme WP Stooklijn Correctie (Geleerd)", _diag("stooklijn_correctie"),
-                       TEMP, SensorDeviceClass.TEMPERATURE, None, D, icon="mdi:chart-bell-curve-cumulative", entity_suffix="stooklijn_correctie"),
-        DecisionSensor(c, "vloer_tekort", "Slimme WP Vloer Warmtetekort", _diag("vloer_tekort"), TEMP,
-                       SensorDeviceClass.TEMPERATURE, None, D, icon="mdi:heating-coil", entity_suffix="vloer_tekort"),
+                       "K", None, None, D, icon="mdi:chart-bell-curve-cumulative", entity_suffix="stooklijn_correctie"),
+        DecisionSensor(c, "vloer_tekort", "Slimme WP Vloer Warmtetekort", _diag("vloer_tekort"), "K",
+                       None, None, D, icon="mdi:heating-coil", entity_suffix="vloer_tekort"),
         DecisionSensor(c, "vloer_bron", "Slimme WP Vloer Bron", _diag("vloer_bron"), category=D,
                        icon="mdi:thermometer-check", entity_suffix="vloer_bron"),
         DecisionSensor(c, "kamer_na_bedtijd", "Slimme WP Voorspelde Kamer 1u Na Bedtijd",

@@ -11,9 +11,9 @@ Zelflerende regeling voor warmtepompen met vloerverwarming. Ontwikkeld voor een 
 - **Leert je huis kennen.** Uit de sensoren leert de integratie hoe snel je huis afkoelt, hoe traag de vloer opwarmt en afkoelt en hoeveel de zon bijdraagt. Daaruit rolt vanzelf een eigen stooklijn. Tot het model genoeg data heeft (ca. 2-3 dagen) gebruikt de integratie je handmatige stooklijn en wordt die geleidelijk vervangen.
 - **Vloer warm bij bedtijd.** De planner kijkt vooruit (weer, zon, dag/nacht-setpoints) en verwarmt de vloer *voor* je bedtijd extra voor, zodat de kamer na bedtijd niet onder het setpoint zakt en de pomp 's nachts niet hard hoeft te herstellen. Een avondcorrectie leert bij: was de kamer één uur na bedtijd te koud, dan wordt de vloer de volgende dag iets verder opgeladen.
 - **Stille uren.** Van bedtijd tot einde van de nacht is de maximale opslag beperkt (`Max Opslag Stille Uren`) en weegt energiegebruik zwaarder (`Voorkeur Stille Uren`).
-- **Stroomprijs (optioneel).** Met een prijssensor met voorspelling (Nordpool, EPEX Spot, Frank Energie, ENTSO-E of vergelijkbaar: een lijst met start + prijs in de attributen) wordt warmte verschoven naar goedkopere uren, binnen de comforttolerantie. Zonder voorspelling wordt de huidige prijs vergeleken met de afgelopen 48 uur.
+- **Stroomprijs (optioneel).** Met een prijssensor met voorspelling (Nordpool, EPEX Spot, Frank Energie, ENTSO-E of vergelijkbaar: een lijst met start + prijs in de attributen) wordt warmte verschoven naar goedkopere uren, binnen de comforttolerantie. Zonder voorspelling wordt de huidige prijs vergeleken met de afgelopen 48 uur. De eenheid van de sensor wordt gelezen en omgerekend naar €/kWh: een prijs in ct/kWh of in €/MWh werkt dus ook (voor de voorspelling in de attributen wordt dezelfde eenheid aangenomen). Heeft de sensor geen eenheid, dan wordt de waarde genomen zoals hij is.
 - **Zonnepanelen (optioneel).** Bij overschot telt stroom minder zwaar en kan `Zonnepanelen Boost` extra warmte in de vloer opslaan.
-- **Warm tapwater (optioneel).** Vul een vattemperatuursensor en een schakelaar in en je krijgt: minimumtemperatuur, bijladen op goedkope/zonne-uren, een legionellacyclus (standaard wekelijks, 60 °C) en een maximale looptijd als beveiliging. De warmtepomp zelf moet het omschakelen van het ventiel regelen.
+- **Warm tapwater (optioneel).** Vul een vattemperatuursensor en een schakelaar in en je krijgt: minimumtemperatuur, bijladen op goedkope/zonne-uren, een legionellacyclus (standaard wekelijks, 60 °C) en een maximale looptijd als beveiliging. Haalt de boiler zijn doel niet binnen die looptijd (veel pompen halen zonder element maar ongeveer 55 °C), dan wacht de regeling 24 uur (legionella) of 6 uur (gewoon verwarmen) voor ze het opnieuw probeert, verwarmt het huis intussen gewoon en stuurt een melding. Zonder prijssensor start de legionellacyclus 's middags (12:00 tot 17:00), niet midden in de nacht. De warmtepomp zelf moet het omschakelen van het ventiel regelen.
 - **Compressorbescherming.** Minimale draaitijd en stilstandtijd, geen pendelen door afrondingsfouten (setpoints worden over de tijd gemiddeld), ontdooi-detectie, zomermodus op het 24-uursgemiddelde met hysterese, en een minimale kamertemperatuur als vorstbeveiliging.
 
 ## Installatie
@@ -79,6 +79,8 @@ Voor een nieuwe installatie, een reservekopie of om je instellingen te delen:
   - `pompkennis` (standaard aan): de frequentietabel en het ontdooigedrag. Dat hoort bij de pomp en is bruikbaar voor iemand met dezelfde pomp.
   - `huiskennis` (standaard uit): het huismodel (afkoeltijd, vloer), de avondcorrectie, de stooklijn en de statistieken. Dat hoort bij jouw huis; in een ander huis zou het weken verkeerd regelen tot het is afgeleerd. Zet dit alleen aan voor een back-up van je eigen installatie.
 - `slimme_warmtepomp.importeer` leest dat bestand (of de meegegeven `data`) en past alles toe, met dezelfde twee keuzes. Waarden worden binnen de toegestane grenzen gehouden; wat niet kon, staat in het antwoord. Wat niet in de export zit, wordt niet aangeraakt: een export met alleen pompkennis laat je eigen huismodel dus staan.
+
+De acties `reset_model`, `exporteer` en `importeer` mogen alleen worden aangeroepen door beheerders (en door automatiseringen en scripts zonder gebruiker). Een gebruiker zonder beheerdersrechten, bijvoorbeeld op een gedeelde tablet, kan het geleerde model dus niet wissen.
 
 Je sensor-koppelingen zitten er bewust niet in: die horen bij jouw installatie.
 
@@ -257,6 +259,7 @@ strategy:
 
 Tabbladen: **Overzicht** (status, regelingschakelaars, wat de regeling nu doet, rendement, verloop), **Leren** (modelvertrouwen, geleerde tabellen: frequentie per verschil, verwacht setpoint, vloer en setpoint per buitentemperatuur, stooklijn), **Instellingen** (alle instellingen, gegroepeerd; optionele groepen alleen als ze bestaan), **Warmtepomp** (jouw eigen sensoren: aanvoer, retour, frequentie, vermogen, flow, coil en grafieken) en **Kosten & analyse**.
 
+- Het dashboard gaat uit van de standaard entiteit-ID's van de integratie (`sensor.slimme_wp_setpoint`, `climate.slimme_wp_thermostaat`, enz.). Hernoem je een van die entiteiten, dan verdwijnt de bijbehorende kaart zonder foutmelding; zet de ID dan terug.
 - De grafieken gebruiken *mini-graph-card* als je die via HACS hebt, anders de ingebouwde geschiedenisgrafiek.
 - Een nieuwe instelling die ooit aan de integratie wordt toegevoegd, verschijnt automatisch onder *Overig*.
 - Verschijnt *Slimme Warmtepomp* niet in de lijst? Voeg het bestand dan handmatig toe als resource (*Dashboards → ⋮ → Bronnen → Resource toevoegen*): URL `/slimme_warmtepomp_frontend/slimme-warmtepomp-strategy.js`, type *JavaScript-module*. Het log vermeldt een waarschuwing als de integratie het bestand niet zelf kon laden.
@@ -393,3 +396,16 @@ Wil de planner uitlopen terwijl de kamer net op doel zit (hooguit 0,3 K erboven)
 - `async_migrate_entry` weigert een configuratie die door een nieuwere versie is opgeslagen.
 - De release wacht nu ook op hassfest en de HACS-controle.
 - Bewust niet veranderd: de presetnamen *Dag*, *Nacht* en *Handmatig* blijven Nederlands (ook voor Engelstalige gebruikers). Hassfest accepteert alleen kleine letters in vertaalsleutels; andere namen zouden automatiseringen breken die deze presets gebruiken.
+
+### Reviewpunten opgelost (v2.18.2)
+- Tapwater: een run die zijn doel niet haalt (bijvoorbeeld legionella 60 °C met een boiler die 55 °C haalt) startte meteen opnieuw en hield de pomp de hele dag op tapwater, zonder verwarming. Nu volgt na de maximale looptijd een wachttijd (24 uur voor legionella, 6 uur voor gewoon verwarmen) en een melding. De wachttijd blijft bewaard bij een herstart (attribuut `tapwater_wacht_tot`).
+- Zonder prijssensor start de legionellacyclus 's middags (12:00 tot 17:00) in plaats van direct, ook 's nachts. Met een goedkoop uur of zonne-overschot kan hij nog steeds eerder, en een dag te laat start hij altijd.
+- Een koude bewaakte ruimte voedt nu ook de bijsturing (de bewaarde integrator) en het leren van de stooklijncorrectie niet meer; die zien alleen de echte hoofdruimte. Het tekort telt alleen als extra warmtevraag.
+- Stroomprijs: de eenheid van de sensor wordt gelezen en omgerekend naar €/kWh (ct/kWh, €/MWh). Bij een andere eenheid dan eerder wordt de bewaarde prijsgeschiedenis opnieuw opgebouwd.
+- `reset_model`, `exporteer` en `importeer` zijn alleen voor beheerders.
+- Platte prijslijsten (`today`/`tomorrow`) blijven op de dagen dat de klok verspringt per uur ingedeeld (23, 24 of 25 tijdvakken), niet op 00:57 en 01:55.
+- De vorst-retourcheck wist de starttijd als het water weer boven de grens komt, zodat de 5 minuten echt achter elkaar moeten zijn.
+- *Stooklijn Correctie (Geleerd)* en *Vloer Warmtetekort* hebben eenheid K in plaats van °C (het zijn verschillen; zo rekent Home Assistant ze niet om naar Fahrenheit met een offset). *Max Stroomprijs* heeft eenheid €/kWh. `services.yaml` laat 1 tot 100 % toe, zoals de code.
+- Tijdens een tapwaterrun gaat niet meer elke 2 minuten een `turn_on` naar de schakelaar; alleen als hij nog niet aan staat.
+- Een dode voorwaarde (`not d.preheating`) in het leren van de stooklijn is weggehaald (geen gedragsverandering) en een ongebruikte lusvariabele is opgeruimd.
+- Nog open: `state_class` van de dag-, week- en maandtellers, de 142 entiteiten waarvan er geen standaard uit staat, het sensortypefilter in de wizard, de eerste regelronde na het laden van de platforms, "Nacht" in de thermostaat en de eenheid van *Verwachte Zon Reductie* (°C, met statistiekgeschiedenis). Die raken bestaande statistieken of het ontwerp en wil ik eerst met je afstemmen.

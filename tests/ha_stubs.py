@@ -53,6 +53,14 @@ def install():
     class HomeAssistantError(Exception):
         pass
 
+    class Unauthorized(HomeAssistantError):
+        def __init__(self, *a, context=None, **kw):
+            super().__init__(*a)
+            self.context = context
+
+    class UnknownUser(Unauthorized):
+        pass
+
     class UpdateFailed(Exception):
         pass
 
@@ -114,7 +122,7 @@ def install():
         now=lambda: datetime.now(TZ), utcnow=lambda: datetime.now(timezone.utc),
         as_local=lambda d: d.astimezone(TZ),
         parse_datetime=_pdt, parse_time=_pt)
-    mod("homeassistant.exceptions", HomeAssistantError=HomeAssistantError)
+    mod("homeassistant.exceptions", HomeAssistantError=HomeAssistantError, Unauthorized=Unauthorized, UnknownUser=UnknownUser)
     mod("homeassistant.core", State=Dummy, HomeAssistant=Dummy, ServiceCall=Dummy, callback=lambda f: f,
         SupportsResponse=StrEnum("SupportsResponse", {"ONLY": "only", "OPTIONAL": "optional", "NONE": "none"}))
     mod("homeassistant.config_entries", ConfigEntry=Dummy, ConfigFlow=Dummy, ConfigFlowResult=dict)

@@ -47,7 +47,7 @@ NUMBER_SPECS: list[tuple] = [
     ("tolerantie_laag", "Slimme WP Tolerantie Te Koud", 0.1, 1.5, 0.1, "°C", 0.3, "core"),
     ("tolerantie_hoog", "Slimme WP Tolerantie Te Warm", 0.1, 2.0, 0.1, "°C", 0.5, "core"),
     # --- stroomprijs & zonnepanelen ---
-    ("max_stroomprijs", "Slimme WP Max Stroomprijs", 0.05, 3.0, 0.01, "€", 0.35, "core"),
+    ("max_stroomprijs", "Slimme WP Max Stroomprijs", 0.05, 3.0, 0.01, "€/kWh", 0.35, "core"),
     ("prijs_gevoeligheid", "Slimme WP Prijsgevoeligheid", 0.0, 3.0, 0.1, "", 1.0, "core"),
     ("max_freq_dag", "Slimme WP Max Frequentie Dag (0 = uit)", 0.0, 120.0, 5.0, "Hz", 80.0, "core"),
     ("max_freq_stil", "Slimme WP Max Frequentie Stille Uren (0 = uit)", 0.0, 120.0, 5.0, "Hz", 50.0, "core"),
