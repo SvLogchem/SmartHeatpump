@@ -750,6 +750,9 @@ def test_usage_degree_days_cost_and_run_time():
     assert s["draaitijd_vandaag"] == 1440 and s["draaitijd_per_start"] == 360
     assert s["kwh_per_graaddag_dag"] == pytest.approx(2.4, abs=0.05)
     assert s["graaddagen_week"] == s["graaddagen_dag"] and s["kosten_jaar"] == s["kosten_dag"]
+    # thermal energy per period, next to the electric use (the helper feeds 3 kWh of heat per kWh of power)
+    assert s["thermisch_dag"] == pytest.approx(72.0, abs=0.1) and s["thermisch_dag"] == pytest.approx(3 * s["energie_dag"], abs=0.1)
+    assert s["thermisch_week"] == s["thermisch_dag"] and s["thermisch_maand"] == s["thermisch_dag"]
 
 
 def test_usage_mild_day_has_no_kwh_per_degree_day_and_base_is_adjustable():

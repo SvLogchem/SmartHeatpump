@@ -833,3 +833,14 @@ def test_yesterday_sensors_can_be_used_for_statistics(setup):
         assert e._attr_state_class == SensorStateClass.MEASUREMENT, eid
     assert by_id["sensor.slimme_wp_kwh_per_graaddag_gisteren"]._attr_native_unit_of_measurement == "kWh/°Cd"
     assert entity_name("Slimme WP kWh Per Graaddag Gisteren", "en") == "Smart HP kWh Per Degree Day Yesterday"
+
+
+def test_thermal_energy_per_period_has_sensors_like_the_costs(setup):
+    from homeassistant.components.sensor import SensorStateClass
+    from engine.names_en import entity_name
+    h, entry, c = setup
+    by_id = {e.entity_id: e for _, e in h.entities}
+    for per in ("dag", "week", "maand"):
+        e = by_id[f"sensor.slimme_wp_thermisch_{per}"]
+        assert e._attr_native_unit_of_measurement == "kWh" and e._attr_state_class == SensorStateClass.MEASUREMENT
+    assert entity_name("Slimme WP Thermisch Vandaag", "en") == "Smart HP Thermal Today"

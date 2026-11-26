@@ -136,6 +136,9 @@ def test_dashboard_follows_the_review_points():
     assert "sensor.slimme_wp_reden" not in r["cfg_entities"] and "sensor.slimme_wp_plan" not in r["cfg_entities"]
     # statistics graphs use the "yesterday" sensors (a fixed value per day), not the running value
     assert "sensor.slimme_wp_cop_gisteren" in r["cfg_entities"] and "sensor.slimme_wp_kwh_per_graaddag_gisteren" in r["cfg_entities"]
+    # thermal energy next to the costs: tiles for today / week / month and a graph per day
+    for eid in ("sensor.slimme_wp_thermisch_dag", "sensor.slimme_wp_thermisch_week", "sensor.slimme_wp_thermisch_maand"):
+        assert eid in r["cfg_entities"], eid
     # new status and hot water parts
     for eid in ("binary_sensor.slimme_wp_bivalent", "binary_sensor.slimme_wp_dhw_bezig", "sensor.slimme_wp_graaddagen_week"):
         assert eid in r["cfg_entities"], eid
@@ -157,6 +160,39 @@ def test_hot_water_block_disappears_without_hot_water():
         states.pop(eid)
     r = _run(states)
     assert "Cyclus bezig" not in r["names"] and r["missing"] == []
+
+
+def _strict_render(template, attributes):
+    """Render like Home Assistant does: a missing key or attribute is an error, not an empty value."""
+    jinja2 = pytest.importorskip("jinja2")
+    import datetime
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    env.globals.update(
+        state_attr=lambda entity, name: attributes.get((entity, name)), states=lambda entity: "x", now=datetime.datetime.now,
+        as_timestamp=lambda v: datetime.datetime.fromisoformat(v).timestamp() if isinstance(v, str) else v.timestamp())
+    env.filters["timestamp_custom"] = lambda ts, fmt="%d-%m %H:%M": datetime.datetime.fromtimestamp(ts).strftime(fmt)
+    return env.from_string(template).render().strip()
+
+
+def test_rooms_and_hot_water_texts_survive_missing_keys():
+    S = "sensor.slimme_wp_setpoint"
+    r = _run(_states(_config_with_rooms(["sensor.slaapkamer"], ["sensor.f1"])))
+    rooms = next(m for m in r["markdown"] if "hoofdsensor_weg" in m)
+    # exactly what rooms.combine() delivers: "tekort_bewaakt" only in mode "hoofd", "reden" only when the main sensor is gone
+    for k in ({"modus": "hoofd", "hoofd": 20.1, "extra": {"a": 16.0}, "gebruikt": 20.1, "tekort_bewaakt": 1.0},
+              {"modus": "hoofd", "hoofd": 20.1, "extra": {"a": 19.0}, "gebruikt": 20.1, "tekort_bewaakt": 0.0},
+              {"modus": "gemiddelde", "hoofd": 20.1, "extra": {"a": 18.0}, "gebruikt": 19.05},
+              {"modus": "koudste", "hoofd": 20.1, "extra": {"a": 18.0}, "gebruikt": 18.0}):
+        assert "°C" in _strict_render(rooms, {(S, "kamers"): k})
+    assert "ontbreekt" in _strict_render(rooms, {(S, "kamers"): {"modus": "hoofd", "hoofd": None, "extra": {}, "gebruikt": None,
+                                                                 "reden": "hoofdsensor_weg"}})
+    assert _strict_render(rooms, {}) == ""                                              # no rooms information at all: nothing to show
+    dhw = next(m for m in r["markdown"] if "tapwater_wacht_tot" in m)
+    assert _strict_render(dhw, {})                                                      # nothing waiting, no time-out
+    import datetime
+    later = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)).isoformat()
+    timeout = {"mode": "legionella", "at": later, "tank": 49.5, "target": 60.0}
+    assert "tot" in _strict_render(dhw, {(S, "tapwater_wacht_tot"): later, (S, "tapwater_laatste_timeout"): timeout})
 
 
 DUTCH_WORDS = re.compile(r"\b(de|het|een|niet|nog|van|voor|bij|als|dat|wordt|geen|nu|vloer|buiten|kamer|gemeten|geleerd|tijd|uit|aan)\b", re.I)

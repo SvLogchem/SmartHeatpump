@@ -304,6 +304,8 @@
     "Thermisch": "Thermal", "Thermisch (kW)": "Thermal (kW)", "Tolerantie te koud": "Tolerance too cold",
     "Tolerantie te warm": "Tolerance too warm", "Uitlopen": "Coasting", "Vandaag": "Today", "Veiligheid en pomp": "Safety and pump",
     "Verbruik per dag (kWh)": "Use per day (kWh)", "Verloop (48 uur)": "Trend (48 hours)", "Vermogen": "Power",
+    "Thermisch vandaag": "Thermal today", "Thermisch week": "Thermal week", "Thermisch maand": "Thermal month",
+    "Thermische energie per dag (kWh)": "Thermal energy per day (kWh)",
     "Vermogen (meter)": "Power (meter)", "Verw. afkoeling": "Exp. cooling", "Verwacht buiten": "Expected outdoor",
     "Verwacht setpoint komende uren": "Expected setpoint coming hours", "Vloer (gemeten)": "Floor (measured)",
     "Vloer (regeling)": "Floor (control)", "Vloer en setpoint per buitentemperatuur": "Floor and setpoint per outdoor temperature",
@@ -449,11 +451,11 @@
       heading("Ruimtes", "mdi:home-thermometer"),
       tile(hass, inp.kamer, "Hoofdruimte", "mdi:sofa", "orange"),
       ...extra.map(([i, entity]) => tile(hass, entity, `Ruimte ${i}`, "mdi:bed", "pink")),
-      markdown(null, `{% set k = state_attr('${S}','kamers') %}{% if k and k.reden == 'hoofdsensor_weg' %}` +
+      markdown(null, `{% set k = state_attr('${S}','kamers') %}{% if k and k.get('reden') == 'hoofdsensor_weg' %}` +
         `${t("De sensor van de hoofdruimte ontbreekt: de regeling houdt de laatste stand vast.", "The main room sensor is missing: the control keeps its last state.")}` +
         `{% elif k %}${t("Modus", "Mode")}: **{{ ${modes}[k.modus] }}**<br>\n` +
-        `${t("De regeling rekent met", "The control uses")} **{{ k.gebruikt }} °C**{% if k.tekort_bewaakt %} ` +
-        `(${t("bewaking vraagt", "guard asks for")} **+{{ k.tekort_bewaakt }} K**){% endif %}{% endif %}`, "full"),
+        `${t("De regeling rekent met", "The control uses")} **{{ k.gebruikt }} °C**{% if k.get('tekort_bewaakt') %} ` +
+        `(${t("bewaking vraagt", "guard asks for")} **+{{ k.get('tekort_bewaakt') }} K**){% endif %}{% endif %}`, "full"),
     ]);
   }
 
@@ -692,7 +694,10 @@
           T("kosten_maand", "Deze maand", "mdi:calendar-month", "green", 6), T("kosten_jaar", "Dit jaar", "mdi:calendar", "green", 6),
           T("energie_dag", "kWh vandaag", "mdi:flash", "amber", 4, true), T("energie_week", "kWh week", "mdi:flash", "amber", 4, true),
           T("energie_maand", "kWh maand", "mdi:flash", "amber", 4, true),
+          T("thermisch_dag", "Thermisch vandaag", "mdi:fire", "red", 4, true), T("thermisch_week", "Thermisch week", "mdi:fire", "red", 4, true),
+          T("thermisch_maand", "Thermisch maand", "mdi:fire", "red", 4, true),
           stats(hass, `sensor.${P}kosten_dag`, "Kosten per dag (30 dagen)", "day", "max", "bar", 30),
+          stats(hass, `sensor.${P}energie_thermisch`, "Thermische energie per dag (kWh)", "day", "change", "bar", 30),
           entitiesCard(hass, [[n("vaste_stroomprijs"), "Stroomprijs (vast contract, €/kWh)", "mdi:currency-eur"],
             [`switch.${P}kosten_vaste_prijs`, "Kosten met vaste prijs"], [n("graaddag_basis"), "Graaddagen referentietemperatuur", "mdi:thermometer"]]),
         ]),

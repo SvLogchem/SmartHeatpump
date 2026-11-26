@@ -74,6 +74,7 @@ class UsageStats:
             out[f"graaddagen_{nm}"] = round(g(p, "dd"), 2)
         for p, nm in (("day", "dag"), ("week", "week"), ("month", "maand")):
             out[f"energie_{nm}"] = round(g(p, "kwh"), 2)
+            out[f"thermisch_{nm}"] = round(g(p, "kwh_th"), 2)
         for p, nm in (("day", "dag"), ("week", "week"), ("month", "maand"), ("year", "jaar")):
             out[f"kosten_{nm}"] = round(g(p, "cost"), 2)
         out["kwh_per_graaddag_dag"] = round(g("day", "kwh") / g("day", "dd"), 2) if g("day", "dd") >= MIN_DD_DAY else None
