@@ -136,6 +136,9 @@ def test_dashboard_follows_the_review_points():
     assert "sensor.slimme_wp_reden" not in r["cfg_entities"] and "sensor.slimme_wp_plan" not in r["cfg_entities"]
     # statistics graphs use the "yesterday" sensors (a fixed value per day), not the running value
     assert "sensor.slimme_wp_cop_gisteren" in r["cfg_entities"] and "sensor.slimme_wp_kwh_per_graaddag_gisteren" in r["cfg_entities"]
+    # thermal energy next to the costs: tiles for today / week / month and a graph per day
+    for eid in ("sensor.slimme_wp_thermisch_dag", "sensor.slimme_wp_thermisch_week", "sensor.slimme_wp_thermisch_maand"):
+        assert eid in r["cfg_entities"], eid
     # new status and hot water parts
     for eid in ("binary_sensor.slimme_wp_bivalent", "binary_sensor.slimme_wp_dhw_bezig", "sensor.slimme_wp_graaddagen_week"):
         assert eid in r["cfg_entities"], eid

@@ -159,6 +159,11 @@ Tabs: **Overview** (status, switches, what the control is doing, rooms, performa
 - Price forecasts are recognised from the shape of the attributes; check the attributes of *Calculated Setpoint* to see whether a forecast is used.
 - Tested with a simulated house and a simulated Home Assistant environment (see `tests/`); the setup wizard, repairs and dashboard have not been run in a real installation yet. Please report anything odd.
 
+## Changelog (v2.18.4)
+
+- New sensors `sensor.slimme_wp_thermisch_dag`, `_week` and `_maand` (kWh of heat the pump gave to the water, next to the electric use). The integration already kept this count but only showed the total. In the generated dashboard, *Heat pump costs* has three more tiles and the graph *Thermal energy per day (kWh)* (30 days, based on `sensor.slimme_wp_energie_thermisch`).
+- The rooms card in the dashboard raised `'dict object' has no attribute 'reden'` in Home Assistant: Home Assistant raises an error on a missing key, even inside an `{% if %}`. The card now uses `.get()`. This fix was not in v2.18.3, which was merged before it was ready. A test now renders the template the same strict way.
+
 ## Changelog (v2.18.3)
 
 - `sensor.slimme_wp_cop_gisteren` and `sensor.slimme_wp_starts_gisteren` now have `state_class: measurement`, and there is a new sensor `sensor.slimme_wp_kwh_per_graaddag_gisteren` (the final value of yesterday, empty after a day too mild to tell). Home Assistant therefore keeps statistics of them. The running values of today change all day, so their daily maximum came out too high; each bar of a statistics graph on the "yesterday" sensors is one day behind. A new sensor builds statistics from now on.
